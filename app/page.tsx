@@ -126,22 +126,27 @@ function MainContent() {
       return
     }
 
-    if (item === "github") {
-      // 跳转到GitHub仓库
+    if (item === "github" || item === "faq") {
+      // 跳转到GitHub仓库（FAQ也跳转到GitHub）
       window.open("https://github.com/Syferie/DuckMail", "_blank", "noopener,noreferrer")
       return
     }
 
-    // 其他选项显示敬请期待
-    const titles = {
-      api: currentLocale === "en" ? "API Documentation" : "API 文档",
-      faq: currentLocale === "en" ? "FAQ" : "常见问题",
-      privacy: currentLocale === "en" ? "Privacy Policy" : "隐私政策",
-      contacts: currentLocale === "en" ? "Contact Us" : "联系我们"
+    if (item === "api") {
+      // 跳转到API文档页面
+      window.open("/api-docs", "_blank", "noopener,noreferrer")
+      return
     }
 
+    if (item === "privacy") {
+      // 跳转到隐私政策页面
+      window.open("/privacy", "_blank", "noopener,noreferrer")
+      return
+    }
+
+    // 其他选项显示敬请期待（虽然现在应该没有其他选项了）
     toast({
-      title: titles[item as keyof typeof titles] || item,
+      title: item,
       description: currentLocale === "en" ? "Coming soon..." : "敬请期待...",
       color: "warning",
       variant: "flat",

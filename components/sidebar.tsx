@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button"
 import { Card } from "@heroui/card"
-import { Mail, RefreshCw, Code, HelpCircle, MessageSquare, Users, ExternalLink } from "lucide-react"
+import { Mail, RefreshCw, Code, HelpCircle, MessageSquare, ExternalLink } from "lucide-react"
 
 interface SidebarProps {
   activeItem: string
@@ -40,11 +40,6 @@ export default function Sidebar({ activeItem, onItemClick, currentLocale, isMobi
       id: "privacy",
       label: currentLocale === "en" ? "Privacy" : "隐私政策",
       icon: MessageSquare
-    },
-    {
-      id: "contacts",
-      label: currentLocale === "en" ? "Contacts" : "联系我们",
-      icon: Users
     },
     {
       id: "github",
