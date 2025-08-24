@@ -12,6 +12,86 @@
   **🌐 [立即使用 duckmail.sbs](https://duckmail.sbs)**
 </div>
 
+### 🚀 Cloudflare Provider 快速部署
+
+- **准备**
+  - 安装并登录 Cloudflare（需要已接入的域名）
+  - 安装 Wrangler CLI
+  - 在项目中进入 `cloudflare-provider`
+
+```bash
+cd cloudflare-provider
+npm install
+wrangler d1 create temp_mail_db
+```
+
+- **配置 `wrangler.toml`**（请替换占位符）
+
+```toml
+name = "duckmail-cloudflare-provider"
+main = "cloudflare-provider/worker.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "TEMP_MAIL_DB"
+database_name = "temp_mail_db"
+database_id = "<your-d1-id>"
+
+[vars]
+MAIL_DOMAIN = "example.com anotherdomain.com"
+JWT_TOKEN = "your-secure-jwt-secret"
+RESEND_API_KEY = ""
+```
+
+- **部署到 Cloudflare**
+
+```bash
+wrangler deploy
+```
+
+部署后记录 Worker 地址（例如：`https://duckmail-cloudflare-provider.username.workers.dev`）。
+
+- **配置 Email Routing**（Cloudflare 面板 → Email → Email Routing）
+  - 启用 Email Routing
+  - 创建 Catch-all 规则：匹配 `*` → 动作为 Send to Worker → 选择 `duckmail-cloudflare-provider`
+
+- **在 Duckmail 中选择 Cloudflare 提供商**（或在 `lib/api.ts` 里预设）
+
+```ts
+{
+  id: "cloudflare",
+  name: "Cloudflare",
+  baseUrl: "https://duckmail-cloudflare-provider.username.workers.dev",
+  mercureUrl: "", // 初期无 SSE，使用轮询
+}
+```
+
+- **本地调试与快速测试**
+
+```bash
+# 运行本地开发
+cd cloudflare-provider
+wrangler dev
+
+# 获取域名
+curl http://localhost:8787/domains
+
+# 创建账号
+curl -X POST http://localhost:8787/accounts \
+  -H "Content-Type: application/json" \
+  -d '{"address": "test@test.local", "password": "password123"}'
+
+# 获取 token
+curl -X POST http://localhost:8787/token \
+  -H "Content-Type: application/json" \
+  -d '{"address": "test@test.local", "password": "password123"}'
+```
+
+- **常见问题与安全建议**
+  - 仅允许 `MAIL_DOMAIN` 中的域名创建账号
+  - 确保 `JWT_TOKEN` 为强随机密钥，且与生产环境一致
+  - 若未收到邮件：检查 Email Routing 规则是否指向该 Worker；使用 `wrangler tail` 查看日志
+
 ## ✨ 特性
 
 - 🔒 **安全可靠** - 使用 Mail.tm 的可靠基础设施

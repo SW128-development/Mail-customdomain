@@ -1,4 +1,4 @@
-// 发送邮件服务（Resend）——基于 fetch 的 Edge 兼容实现
+// Email sending service (Resend) - Edge-compatible implementation based on fetch
 
 function buildHeaders(apiKey){
   return {
@@ -29,8 +29,8 @@ function normalizeSendPayload(payload){
     html,
     text,
   };
-  // 支持自定义发件显示名：fromName + <from>
-  // 仅当 fromName 非空白时才拼接，避免产生 ` <email>` 导致 Resend 校验失败
+  // Support custom sender display name: fromName + <from>
+  // Only concatenate when fromName is not blank to avoid producing ` <email>` which causes Resend validation failure
   if (payload && typeof payload.fromName === 'string' && from){
     const displayName = payload.fromName.trim();
     if (displayName) {

@@ -42,7 +42,9 @@ export async function initDatabase(db) {
         await db.exec('ALTER TABLE mailboxes ADD COLUMN is_pinned INTEGER DEFAULT 0');
         await db.exec('CREATE INDEX IF NOT EXISTS idx_mailboxes_is_pinned ON mailboxes(is_pinned DESC)');
       }
-    } catch (_) {}
+    } catch (error) {
+      console.warn('Migration warning (is_pinned column may already exist):', error.message);
+    }
   } catch (error) {
     console.error('数据库初始化失败:', error);
   }
@@ -164,14 +166,18 @@ export async function ensureSentEmailsTable(db){
     'created_at TEXT DEFAULT CURRENT_TIMESTAMP,' +
     'updated_at TEXT DEFAULT CURRENT_TIMESTAMP' +
   ')';
-  await db.exec(createSql);
-  await db.exec('CREATE INDEX IF NOT EXISTS idx_sent_emails_resend_id ON sent_emails(resend_id)');
-  // 迁移：若缺少 from_name 列，尝试增加
+  // Migration: Add from_name column if missing
   try {
     const res = await db.prepare("PRAGMA table_info(sent_emails)").all();
     const cols = (res?.results || []).map(r => (r.name || r?.['name']));
-    if (!cols.includes('from_name')){
+    if (!cols.includes('from_name')) {
       await db.exec('ALTER TABLE sent_emails ADD COLUMN from_name TEXT');
+    }
+  } catch (error) {
+    console.warn('Migration warning (from_name column may already exist):', error.message);
+  }
+    console.warn('Migration warning (from_name column may already exist):', error.message);
+  }
     }
   } catch (_) {}
 }
@@ -186,14 +192,16 @@ export async function ensureUsersTables(db){
     "password_hash TEXT," +
     "role TEXT NOT NULL DEFAULT 'user'," +
     "can_send INTEGER NOT NULL DEFAULT 0," +
-    "mailbox_limit INTEGER NOT NULL DEFAULT 10," +
-    "created_at TEXT DEFAULT CURRENT_TIMESTAMP" +
-    ")"
-  );
-  await db.exec('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)');
-
-  // 迁移：若缺少 can_send 列，补齐
-  try{
+  // Migration: Add can_send column if missing
+  try {
+    const res = await db.prepare("PRAGMA table_info(users)").all();
+    const cols = (res?.results || []).map(r => (r.name || r?.['name']));
+    if (!cols.includes('can_send')) {
+      await db.exec('ALTER TABLE users ADD COLUMN can_send INTEGER NOT NULL DEFAULT 0');
+    }
+  } catch (error) {
+    console.warn('Migration warning (can_send column may already exist):', error.message);
+  }
     const res = await db.prepare("PRAGMA table_info(users)").all();
     const cols = (res?.results || []).map(r => (r.name || r?.['name']));
     if (!cols.includes('can_send')){
@@ -209,14 +217,16 @@ export async function ensureUsersTables(db){
     "mailbox_id INTEGER NOT NULL," +
     "created_at TEXT DEFAULT CURRENT_TIMESTAMP," +
     "is_pinned INTEGER NOT NULL DEFAULT 0," +
-    "UNIQUE(user_id, mailbox_id)," +
-    "FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE," +
-    "FOREIGN KEY(mailbox_id) REFERENCES mailboxes(id) ON DELETE CASCADE" +
-    ")"
-  );
-  await db.exec('CREATE INDEX IF NOT EXISTS idx_user_mailboxes_user ON user_mailboxes(user_id)');
-  await db.exec('CREATE INDEX IF NOT EXISTS idx_user_mailboxes_mailbox ON user_mailboxes(mailbox_id)');
-
+  // Migration: Add is_pinned column if missing
+  try {
+    const um = await db.prepare("PRAGMA table_info(user_mailboxes)").all();
+    const cols = (um?.results || []).map(r => (r.name || r?.['name']));
+    if (!cols.includes('is_pinned')){
+      await db.exec('ALTER TABLE user_mailboxes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0');
+    }
+  } catch (error) {
+    console.warn('Migration warning (is_pinned column may already exist):', error.message);
+  }
   // 迁移：若缺少 is_pinned 列，则添加
   try {
     const um = await db.prepare("PRAGMA table_info(user_mailboxes)").all();

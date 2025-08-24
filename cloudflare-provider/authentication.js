@@ -1,10 +1,17 @@
 export const COOKIE_NAME = 'mailfree-session';
 
 export async function createJwt(secret, extraPayload = {}) {
+  if (!secret || typeof secret !== 'string') {
+    throw new Error('JWT secret is required and must be a string');
+  }
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload = { exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60, ...extraPayload };
   const encoder = new TextEncoder();
-  const data = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
+  const data =
+    base64UrlEncode(JSON.stringify(header)) +
+    '.' +
+    base64UrlEncode(JSON.stringify(payload));
+
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(secret),
@@ -36,7 +43,7 @@ export async function verifyJwt(secret, cookieHeader) {
     if (!valid) return false;
     const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[1])));
     if (payload.exp <= Math.floor(Date.now() / 1000)) return false;
-    return payload; // 返回 payload（包含 role 等）
+    return payload; // Return payload (contains role, etc.)
   } catch (_) {
     return false;
   }
