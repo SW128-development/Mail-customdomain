@@ -19,6 +19,13 @@ export const PRESET_PROVIDERS: ApiProvider[] = [
     mercureUrl: "https://mercure.mail.tm/.well-known/mercure",
     isCustom: false,
   },
+  {
+    id: "cloudflare",
+    name: "Cloudflare",
+    baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+    mercureUrl: "",
+    isCustom: false,
+  },
 ]
 
 interface ApiProviderContextType {

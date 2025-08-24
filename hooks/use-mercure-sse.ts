@@ -48,11 +48,24 @@ export function useMercureSSE({
         baseUrl: "https://api.mail.tm",
         mercureUrl: "https://mercure.mail.tm/.well-known/mercure",
       },
+      {
+        id: "cloudflare",
+        name: "Cloudflare",
+        baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+        mercureUrl: "", // No SSE for Cloudflare provider
+      },
     ]
 
     const provider = presetProviders.find(p => p.id === providerId)
     if (!provider) {
       console.error("❌ [Mercure] Cannot find provider configuration for:", providerId)
+      return
+    }
+
+    // If provider does not support Mercure/SSE, skip quietly (fallback to polling)
+    if (!provider.mercureUrl) {
+      console.log("ℹ️ [Mercure] Provider", providerId, "has no mercureUrl. Skipping SSE and relying on polling.")
+      setIsConnected(false)
       return
     }
 

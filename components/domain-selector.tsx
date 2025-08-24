@@ -31,6 +31,7 @@ export function DomainSelector({ value, onSelectionChange, currentLocale, isDisa
         const presetProviders = [
           { id: "duckmail", name: "DuckMail" },
           { id: "mailtm", name: "Mail.tm" },
+          { id: "cloudflare", name: "Cloudflare" },
         ]
         const customProviders = JSON.parse(localStorage.getItem("custom-api-providers") || "[]")
 

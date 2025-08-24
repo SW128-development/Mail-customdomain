@@ -5,10 +5,10 @@ const API_BASE_URL = "/api/mail"
 // 获取默认API提供商配置（用于向后兼容）
 function getDefaultProviderConfig() {
   return {
-    id: "duckmail",
-    name: "DuckMail",
-    baseUrl: "https://api.duckmail.sbs",
-    mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
+    id: "cloudflare",
+    name: "Cloudflare",
+    baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+    mercureUrl: "",
   }
 }
 
@@ -85,6 +85,12 @@ function getProviderConfig(providerId: string) {
         name: "Mail.tm",
         baseUrl: "https://api.mail.tm",
         mercureUrl: "https://mercure.mail.tm/.well-known/mercure",
+      },
+      {
+        id: "cloudflare",
+        name: "Cloudflare",
+        baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+        mercureUrl: "",
       },
     ]
 
@@ -234,6 +240,7 @@ export async function fetchAllDomains(): Promise<Domain[]> {
     const presetProviders = [
       { id: "duckmail", name: "DuckMail" },
       { id: "mailtm", name: "Mail.tm" },
+      { id: "cloudflare", name: "Cloudflare" },
     ]
     const customProviders = JSON.parse(localStorage.getItem("custom-api-providers") || "[]")
 

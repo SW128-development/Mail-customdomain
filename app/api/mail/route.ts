@@ -137,13 +137,24 @@ export async function GET(request: NextRequest) {
   const endpoint = searchParams.get("endpoint") || ""
   const authHeader = request.headers.get("Authorization")
 
+  // Build query string from all parameters except 'endpoint'
+  const queryParams = new URLSearchParams()
+  for (const [key, value] of searchParams.entries()) {
+    if (key !== 'endpoint') {
+      queryParams.append(key, value)
+    }
+  }
+  
+  // Append query string to endpoint if there are parameters
+  const finalEndpoint = queryParams.toString() ? `${endpoint}?${queryParams.toString()}` : endpoint
+
   const headersInit: HeadersInit = {}
   if (authHeader) {
     headersInit["Authorization"] = authHeader
   }
-  // User-Agent 和 Accept 会在 handleRequest 中设置
+  // User-Agent and Accept will be set in handleRequest
 
-  return handleRequest(request, endpoint, { headers: headersInit, method: "GET" })
+  return handleRequest(request, finalEndpoint, { headers: headersInit, method: "GET" })
 }
 
 export async function POST(request: NextRequest) {
