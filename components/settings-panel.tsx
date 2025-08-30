@@ -11,11 +11,13 @@ import {
 import { Button } from "@heroui/button"
 import { Input } from "@heroui/input"
 import { Card, CardBody, CardHeader } from "@heroui/card"
-
 import { Divider } from "@heroui/react"
-import { Trash2, Plus, Edit3 } from "lucide-react"
+import { Trash2, Plus, Edit3, Cloud, Settings, Globe, Activity } from "lucide-react"
 import { useApiProvider } from "@/contexts/api-provider-context"
 import { useHeroUIToast } from "@/hooks/use-heroui-toast"
+import { CloudflareSetupWizard } from "./cloudflare-setup-wizard"
+import { CloudflareDomainManager } from "./cloudflare-domain-manager"
+import { CloudflareAutoDetect } from "./cloudflare-auto-detect"
 import type { CustomApiProvider } from "@/types"
 
 interface SettingsPanelProps {
@@ -33,10 +35,13 @@ export function SettingsPanel({ isOpen, onClose, currentLocale }: SettingsPanelP
     toggleProviderEnabled,
     isProviderEnabled
   } = useApiProvider()
+  
   const { toast } = useHeroUIToast()
-
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [editingProvider, setEditingProvider] = useState<CustomApiProvider | null>(null)
+  const [showCloudflareWizard, setShowCloudflareWizard] = useState(false)
+  const [showCloudflareManager, setShowCloudflareManager] = useState(false)
+  const [showCloudflareAutoDetect, setShowCloudflareAutoDetect] = useState(false)
   
   // 自定义提供商表单状态
   const [customForm, setCustomForm] = useState({
@@ -134,6 +139,7 @@ export function SettingsPanel({ isOpen, onClose, currentLocale }: SettingsPanelP
   }
 
   return (
+    <>
     <Modal 
       isOpen={isOpen} 
       onClose={onClose}
@@ -207,6 +213,64 @@ export function SettingsPanel({ isOpen, onClose, currentLocale }: SettingsPanelP
                     </CardBody>
                   </Card>
                 ))}
+              </div>
+            </div>
+
+            <Divider />
+
+            {/* Cloudflare Integration Section */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-4">
+                {isZh ? "Cloudflare 集成" : "Cloudflare Integration"}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  isPressable
+                  onPress={() => setShowCloudflareWizard(true)}
+                >
+                  <CardBody className="text-center p-6">
+                    <Settings className="h-12 w-12 mx-auto mb-3 text-blue-500" />
+                    <h4 className="font-semibold mb-2">
+                      {isZh ? "新建 Worker" : "New Worker"}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {isZh ? "自动部署新的 Cloudflare Worker" : "Auto-deploy new Cloudflare Worker"}
+                    </p>
+                  </CardBody>
+                </Card>
+                
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  isPressable
+                  onPress={() => setShowCloudflareAutoDetect(true)}
+                >
+                  <CardBody className="text-center p-6">
+                    <Globe className="h-12 w-12 mx-auto mb-3 text-green-500" />
+                    <h4 className="font-semibold mb-2">
+                      {isZh ? "检测现有配置" : "Detect Existing"}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {isZh ? "自动检测环境变量中的配置" : "Auto-detect config from environment"}
+                    </p>
+                  </CardBody>
+                </Card>
+                
+                <Card 
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  isPressable
+                  onPress={() => setShowCloudflareManager(true)}
+                >
+                  <CardBody className="text-center p-6">
+                    <Activity className="h-12 w-12 mx-auto mb-3 text-purple-500" />
+                    <h4 className="font-semibold mb-2">
+                      {isZh ? "管理 Worker" : "Manage Worker"}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {isZh ? "管理现有 Worker 的域名" : "Manage domains for existing Worker"}
+                    </p>
+                  </CardBody>
+                </Card>
               </div>
             </div>
 
@@ -304,5 +368,27 @@ export function SettingsPanel({ isOpen, onClose, currentLocale }: SettingsPanelP
         </ModalFooter>
       </ModalContent>
     </Modal>
+    
+    {/* Cloudflare Setup Wizard */}
+    <CloudflareSetupWizard
+      isOpen={showCloudflareWizard}
+      onClose={() => setShowCloudflareWizard(false)}
+      currentLocale={currentLocale}
+    />
+    
+    {/* Cloudflare Domain Manager */}
+    <CloudflareDomainManager
+      isOpen={showCloudflareManager}
+      onClose={() => setShowCloudflareManager(false)}
+      currentLocale={currentLocale}
+    />
+    
+    {/* Cloudflare Auto Detect */}
+    <CloudflareAutoDetect
+      isOpen={showCloudflareAutoDetect}
+      onClose={() => setShowCloudflareAutoDetect(false)}
+      currentLocale={currentLocale}
+    />
+  </>
   )
 }

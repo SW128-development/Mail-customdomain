@@ -3,8 +3,7 @@
 ## Goals
 - Support multi‑domain setup for the Cloudflare Worker provider from within the app.
 - Two flows:
-  - Mode A: Fully automated initial deploy via UI (backend drives Cloudflare APIs).
-  - Mode B: Attach an existing manually deployed Worker, then manage domains via UI.
+
 - Keep Cloudflare API tokens server‑side only.
 
 ---
@@ -142,7 +141,45 @@
 ---
 
 ## Rollout Plan
-- Phase 1: Implement backend endpoints with idempotency.
-- Phase 2: Mode B UI (Attach Worker + Domain Manager + Preflight).
-- Phase 3: Mode A Setup Wizard (initial deploy automation).
-- Phase 4: Nightly reconcile job to detect drift and offer one‑click fixes. 
+- ✅ Phase 1: Implement backend endpoints with idempotency.
+- ✅ Phase 2: Mode B UI (Attach Worker + Domain Manager + Preflight).
+- ✅ Phase 3: Mode A Setup Wizard (initial deploy automation).
+- ✅ Phase 4: JWT token configuration and UI fixes.
+- 🔄 Phase 5: Nightly reconcile job to detect drift and offer one‑click fixes.
+
+## Implementation Status
+
+### ✅ Completed
+- Backend API endpoints (`/api/cf/*`)
+- Setup wizard component with full workflow
+- Domain manager component for existing workers
+- Integration with settings panel with clickable cards
+- Worker script generation and deployment
+- Email routing configuration
+- D1 database management
+- Status monitoring and health checks
+- JWT token configuration from environment variables
+- UI component fixes for proper interaction
+
+### 📋 Available Features
+- **Automated Worker Deployment**: Complete setup wizard for new deployments
+- **Domain Management**: Add/remove domains from existing workers
+- **Health Monitoring**: Check worker status and email routing configuration
+- **Provider Integration**: Automatically add workers as custom providers
+- **Multi-account Support**: Work with multiple Cloudflare accounts and zones
+- **JWT Token Management**: Support for existing worker JWT tokens via environment variables
+
+### 🔧 Usage
+1. Set environment variables in `.env.local`:
+   - `CLOUDFLARE_API_TOKEN` - Your Cloudflare API token
+   - `CLOUDFLARE_JWT_TOKEN` - JWT secret (must match wrangler.toml for existing workers)
+2. Open Settings → Cloudflare Management
+3. Choose "New Worker" for automated deployment or "Manage Worker" for existing workers
+4. Follow the guided setup process
+5. Add the deployed worker as a provider
+
+### 🔑 Important Configuration
+- For existing Cloudflare Workers, ensure `CLOUDFLARE_JWT_TOKEN` in `.env.local` matches the `JWT_TOKEN` in your `wrangler.toml`
+- For new deployments, the JWT token can be auto-generated or specified
+- The JWT token is used for authenticating API requests between the app and the Cloudflare Worker   - Mode A: Fully automated initial deploy via UI (backend drives Cloudflare APIs).
+  - Mode B: Attach an existing manually deployed Worker, then manage domains via UI.

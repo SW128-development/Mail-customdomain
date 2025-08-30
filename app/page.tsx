@@ -12,6 +12,7 @@ import MessageList from "@/components/message-list"
 import MessageDetail from "@/components/message-detail"
 import { AuthProvider, useAuth } from "@/contexts/auth-context"
 import { MailStatusProvider } from "@/contexts/mail-status-context"
+import { initializeCloudflareProvider } from "@/lib/cloudflare-init"
 import type { Message } from "@/types"
 import { useHeroUIToast } from "@/hooks/use-heroui-toast"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -29,6 +30,11 @@ function MainContent() {
   const { toast } = useHeroUIToast()
   const isMobile = useIsMobile()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  // Initialize Cloudflare provider if configured
+  useEffect(() => {
+    initializeCloudflareProvider().catch(console.error)
+  }, [])
 
   // 检测浏览器语言并设置默认语言
   useEffect(() => {

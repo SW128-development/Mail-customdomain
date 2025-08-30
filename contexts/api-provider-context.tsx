@@ -22,7 +22,7 @@ export const PRESET_PROVIDERS: ApiProvider[] = [
   {
     id: "cloudflare",
     name: "Cloudflare",
-    baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+    baseUrl: process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "https://duckmail-cloudflare-provider.lungw96.workers.dev",
     mercureUrl: "",
     isCustom: false,
   },

@@ -1,14 +1,15 @@
 import type { Account, Domain, Message, MessageDetail } from "@/types"
 
 const API_BASE_URL = "/api/mail"
+const CF_BASE_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "https://duckmail-cloudflare-provider.lungw96.workers.dev"
 
 // 获取默认API提供商配置（用于向后兼容）
 function getDefaultProviderConfig() {
   return {
-    id: "cloudflare",
-    name: "Cloudflare",
-    baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
-    mercureUrl: "",
+    id: "duckmail",
+    name: "DuckMail",
+    baseUrl: "https://api.duckmail.sbs",
+    mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
   }
 }
 
@@ -34,13 +35,13 @@ function inferProviderFromEmail(email: string): string {
   try {
     const domain = email.split("@")[1]
     if (!domain) return "duckmail"
-
+    
     // 首先检查已知的域名模式
-    const knownDomainPatterns: Record<string, string> =   {
+    const knownDomainPatterns: Record<string, string> = {
       // Mail.tm 的常见域名
       "1secmail.com": "mailtm"
     }
-
+    
     // 检查是否是已知域名
     if (knownDomainPatterns[domain]) {
       console.log(`📍 [API] Domain ${domain} mapped to provider: ${knownDomainPatterns[domain]}`)
@@ -89,9 +90,10 @@ function getProviderConfig(providerId: string) {
       {
         id: "cloudflare",
         name: "Cloudflare",
-        baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
+        baseUrl: CF_BASE_URL,
         mercureUrl: "",
       },
+      
     ]
 
     // 查找预设提供商
@@ -237,11 +239,7 @@ export async function fetchAllDomains(): Promise<Domain[]> {
   try {
     // 获取启用的提供商列表
     const disabledProviders = JSON.parse(localStorage.getItem("disabled-api-providers") || "[]")
-    const presetProviders = [
-      { id: "duckmail", name: "DuckMail" },
-      { id: "mailtm", name: "Mail.tm" },
-      { id: "cloudflare", name: "Cloudflare" },
-    ]
+        const presetProviders = [      { id: "duckmail", name: "DuckMail" },      { id: "mailtm", name: "Mail.tm" },      { id: "cloudflare", name: "Cloudflare" }    ]
     const customProviders = JSON.parse(localStorage.getItem("custom-api-providers") || "[]")
 
     const allProviders = [...presetProviders, ...customProviders]

@@ -262,3 +262,67 @@ pnpm start
 ---
 
 ⭐ 如果这个项目对你有帮助，请给它一个星标！
+
+### 🧭 Cloudflare 一体化配置与测试指南（合并版）
+
+本节汇总 Cloudflare Worker 部署、Email Routing 配置、应用内连接（含缺省配置的优雅回退）与测试步骤。
+
+#### 1) 环境与变量
+- 推荐设置（可在 UI 中临时连接，无需强制 .env）：
+  - `NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL`：你的 Worker 基础地址（用于域名/消息等数据访问，不依赖 Cloudflare API）
+    - 例如：`https://duckmail-cloudflare-provider.lungw96.workers.dev`
+  - `CLOUDFLARE_JWT_TOKEN`：与 Worker `wrangler.toml` 内的 `JWT_TOKEN` 保持一致
+  - `CLOUDFLARE_API_TOKEN`（可选，管理功能用）：一个具备多项权限的 Cloudflare API Token（非 Global API Key）
+    - 权限：Account: Workers Scripts(Edit), D1(Edit)；Zone: Zone(Read), Email Routing(Edit)
+
+> 说明：数据访问（/domains、/accounts、/messages 等）只需要 `NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL` 指向已部署的 Worker；Cloudflare API Token 仅用于“在应用内进行 Cloudflare 账户/域名/路由编排”的管理功能。
+
+#### 2) 优雅回退（无 Token 不阻塞）
+- 应用在打开 Cloudflare 管理界面时会先调用 `/api/cf/preflight`：
+  - 若未配置 Token，UI 显示“连接 Cloudflare”按钮而不是直接请求 Cloudflare（避免 500）
+  - 点击后可临时输入 Token，应用将以 httpOnly Cookie 存储该 Token（仅本会话有效）
+- 所有 Cloudflare 管理接口（如 `/api/cf/accounts`, `/api/cf/status`）在缺 Token 时返回：
+  - `{ success: false, code: 'CONFIG_REQUIRED' }` 或 `{ success: false, code: 'CONFIG_INVALID' }`
+  - UI 将引导用户连接或更换 Token，而不会中断已有功能
+
+#### 3) Worker 部署（简要）
+1. 进入 `cloudflare-provider` 并创建 D1：
+```bash
+cd cloudflare-provider
+wrangler d1 create temp_mail_db
+```
+2. 配置 `wrangler.toml` 中的 `MAIL_DOMAIN`、`JWT_TOKEN`、D1 绑定；部署：
+```bash
+wrangler deploy
+```
+3. 在 Cloudflare Email Routing 中启用路由并创建 Catch-all → 动作 "Send to Worker" 指向该 Worker。
+
+#### 4) 应用内连接 Cloudflare（管理功能）
+- 设置面板 → Cloudflare Integration：
+  - 若 `CLOUDFLARE_API_TOKEN` 未配置，点击“连接 Cloudflare”，按提示粘贴 API Token（会话级别存储，不落地浏览器存储）
+  - 连接成功后，选择账户/域名，执行 Email Routing 设置与健康检查
+
+#### 5) 快速测试
+- Worker 可用性：
+```bash
+curl "$NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL/domains"
+```
+- UI 中选择 Cloudflare 作为 Provider 后，`10xco.de` 等域名应可见；
+- 在管理界面点击“状态/健康检查”验证：
+  - Worker Live、D1 绑定、MAIL_DOMAIN 一致、路由与 Catch-all 正确
+
+#### 6) 常见问题
+- “Invalid request headers/Unauthorized”：多为 Token 缺失或权限不足 → 通过 UI 重新连接，或在后台更新 `CLOUDFLARE_API_TOKEN`
+- 域名不可见：确认 `NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL` 正确且 Worker `/domains` 返回域名；确认 Email Routing 指向该 Worker
+- 生产安全：生产环境下优先使用服务器环境变量，禁用前端提交 Token；仅开发场景允许 UI 临时连接
+
+#### 7) 推荐的 Token 策略
+- 创建一个“多权限聚合”的 API Token（非 Global API Key）：
+  - Account: Workers Scripts(Edit), D1(Edit)
+  - Zone: Zone(Read), Email Routing(Edit)
+- 在应用中使用“会话级别的 httpOnly Cookie”存储 Token；提供“断开连接”即可清除
+
+以上流程确保：
+- 没有 Cloudflare Token 时，现有 Worker 提供的域名/邮件功能仍然可用；
+- 需要 Cloudflare 管理动作时，才提示输入并验证 Token；
+- 配置缺失不会引发 500，而是以可恢复的 UI 提示处理。
