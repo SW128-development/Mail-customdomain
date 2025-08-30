@@ -39,7 +39,6 @@ interface SetupResult {
     databaseId: string
   }
   domains: string[]
-  jwtToken: string
 }
 
 enum SetupStep {

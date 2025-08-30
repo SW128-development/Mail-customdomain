@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { randomBytes } from 'node:crypto'
 
 interface SetupInitialRequest {
   accountId: string
@@ -8,10 +9,16 @@ interface SetupInitialRequest {
   jwtToken?: string
 }
 
-interface CloudflareApiResponse {
+interface CloudflareApiError {
+  code?: number
+  message: string
+  [key: string]: unknown
+}
+
+interface CloudflareApiResponse<T> {
   success: boolean
-  errors: any[]
-  result: any
+  errors: CloudflareApiError[]
+  result: T
 }
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
@@ -138,29 +145,56 @@ export default {
 }
 `
 
-async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?: any, apiToken?: string) {
+async function callCloudflareAPI<T = unknown>(
+  endpoint: string,
+  method: string = 'GET',
+  body?: unknown,
+  apiToken?: string,
+  retries: number = 3
+): Promise<T> {
   const token = apiToken || CLOUDFLARE_API_TOKEN
-  
+
   if (!token) {
     throw new Error('CLOUDFLARE_API_TOKEN not configured')
   }
 
-  const response = await fetch(`https://api.cloudflare.com/client/v4${endpoint}`, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-
-  const data: CloudflareApiResponse = await response.json()
+  let lastError: Error | null = null
   
-  if (!data.success) {
-    throw new Error(`Cloudflare API error: ${data.errors.map(e => e.message).join(', ')}`)
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(`https://api.cloudflare.com/client/v4${endpoint}`, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+
+      // Handle rate limiting
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After')
+        const delay = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : Math.pow(2, attempt) * 1000
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      const data: CloudflareApiResponse<T> = await response.json()
+
+      if (!data.success) {
+        throw new Error(`Cloudflare API error: ${data.errors.map((e) => e.message).join(', ')}`)
+      }
+
+      return data.result as T
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Unknown error')
+      if (attempt === retries - 1) throw lastError
+    }
   }
   
-  return data.result
+  throw lastError || new Error('API call failed')
 }
 
 export async function POST(request: NextRequest) {
@@ -190,14 +224,14 @@ export async function POST(request: NextRequest) {
     console.log('Creating/verifying D1 database...')
     let databaseId: string
     try {
-      const databases = await callCloudflareAPI(`/accounts/${accountId}/d1/database`, 'GET', undefined, apiToken)
-      const existingDb = databases.find((db: any) => db.name === d1Name)
+      const databases = await callCloudflareAPI<Array<{ uuid: string; name: string }>>(`/accounts/${accountId}/d1/database`, 'GET', undefined, apiToken)
+      const existingDb = databases.find((db) => db.name === d1Name)
       
       if (existingDb) {
         databaseId = existingDb.uuid
         console.log(`Using existing D1 database: ${databaseId}`)
       } else {
-        const newDb = await callCloudflareAPI(`/accounts/${accountId}/d1/database`, 'POST', {
+        const newDb = await callCloudflareAPI<{ uuid: string }>(`/accounts/${accountId}/d1/database`, 'POST', {
           name: d1Name
         }, apiToken)
         databaseId = newDb.uuid
@@ -213,9 +247,9 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Deploy Worker script
     console.log('Deploying Worker script...')
-    // Use provided JWT token, or from env, or generate a new one
-    const finalJwtToken = jwtToken || DEFAULT_JWT_TOKEN || 'tusiKCfuyXrwDPrsP77GHZtSSdMux6AqDZQKmySpBss='
-    console.log('Using JWT token:', finalJwtToken ? 'configured' : 'generated')
+    // Decide JWT secret: prefer env var; otherwise use provided; otherwise generate a secure secret (do not expose)
+    const finalJwtToken = DEFAULT_JWT_TOKEN || jwtToken || randomBytes(32).toString('base64url')
+    console.log('Using JWT token:', DEFAULT_JWT_TOKEN ? 'from-env' : (jwtToken ? 'provided' : 'generated'))
     const mailDomain = domains.join(',')
     
     try {
@@ -249,7 +283,12 @@ export async function POST(request: NextRequest) {
     for (const domain of domains) {
       try {
         // Get zone for domain
-        const zones = await callCloudflareAPI(`/zones?name=${domain}`, 'GET', undefined, apiToken)
+        const zones = await callCloudflareAPI<Array<{ id: string; name: string }>>(
+          `/zones?name=${encodeURIComponent(domain)}`, 
+          'GET',
+          undefined,
+          apiToken
+        )
         if (zones.length === 0) {
           console.warn(`Zone not found for domain: ${domain}`)
           continue
@@ -261,7 +300,7 @@ export async function POST(request: NextRequest) {
         // Enable email routing
         try {
           await callCloudflareAPI(`/zones/${zone.id}/email/routing/enable`, 'POST', undefined, apiToken)
-        } catch (e) {
+        } catch {
           console.log(`Email routing might already be enabled for ${domain}`)
         }
         
@@ -287,8 +326,7 @@ export async function POST(request: NextRequest) {
         name: d1Name,
         databaseId
       },
-      domains: zoneDomains.map(zd => zd.domain),
-      jwtToken: finalJwtToken
+      domains: zoneDomains.map(zd => zd.domain)
     })
 
   } catch (error) {
