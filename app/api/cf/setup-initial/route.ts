@@ -24,9 +24,11 @@ const CF_DEBUG = (() => {
 interface SetupInitialRequest {
 	accountId: string
 	scriptName: string
-	databaseId: string
 	domains: string[]
 	jwtToken?: string
+	// Either provide databaseId directly, or a d1Name to ensure/create
+	databaseId?: string
+	d1Name?: string
 }
 
 async function cf<T = unknown>(endpoint: string, method: string, body?: any, apiToken?: string): Promise<T> {
@@ -48,14 +50,25 @@ async function cf<T = unknown>(endpoint: string, method: string, body?: any, api
 			name,
 			text: typeof value === 'string' ? value : JSON.stringify(value)
 		}))
+		// Deduplicate by name, letting vars override provided bindings (align with add-domain)
+		const bindingMap: Record<string, any> = {}
+		for (const b of providedBindings) {
+			if (b && typeof b.name === 'string') bindingMap[b.name] = b
+		}
+		for (const vb of varBindings) {
+			bindingMap[vb.name] = vb
+		}
+		const mergedBindings = Object.values(bindingMap)
+
 		const metadata = {
 			main_module: 'worker.js',
 			compatibility_date: '2024-12-01',
-			bindings: [...providedBindings, ...varBindings],
+			bindings: mergedBindings,
 		}
 		const form = new FormData()
 		form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json')
-		form.append('worker.js', new Blob([String(body.script)], { type: 'text/javascript' }), 'worker.js')
+		// Use module-friendly content type (align with add-domain)
+		form.append('worker.js', new Blob([String(body.script)], { type: 'application/javascript+module' }), 'worker.js')
 		headers['Accept'] = 'application/json'
 		requestBody = form
 	} else {
@@ -75,10 +88,48 @@ async function cf<T = unknown>(endpoint: string, method: string, body?: any, api
 export async function POST(request: NextRequest) {
 	try {
 		const apiTokenFromHeader = request.headers.get('X-CF-API-Token') || undefined
-		const { accountId, scriptName, databaseId, domains, jwtToken }: SetupInitialRequest = await request.json()
+		const body: SetupInitialRequest = await request.json()
+		const { accountId, scriptName, domains, jwtToken, databaseId: databaseIdRaw, d1Name: d1NameRaw } = body
 
-		if (!accountId || !scriptName || !databaseId || !Array.isArray(domains) || domains.length === 0) {
-			return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+		if (!accountId || !scriptName || !Array.isArray(domains) || domains.length === 0) {
+			return NextResponse.json({ error: 'Missing required fields: accountId, scriptName, domains' }, { status: 400 })
+		}
+
+		// Ensure we have a D1 databaseId, creating or reusing by name if necessary
+		let effectiveDatabaseId = databaseIdRaw && String(databaseIdRaw).trim() ? String(databaseIdRaw).trim() : ''
+		let effectiveD1Name = d1NameRaw && String(d1NameRaw).trim() ? String(d1NameRaw).trim() : 'temp_mail_db'
+
+		if (!effectiveDatabaseId) {
+			if (CF_DEBUG) logger.debug('[SetupInitial] Ensuring D1 database for name=', effectiveD1Name)
+			// 1) Try to find existing by name
+			try {
+				const databases = await cf<any[]>(`/accounts/${accountId}/d1/databases`, 'GET', undefined, apiTokenFromHeader)
+				if (Array.isArray(databases)) {
+					const found = databases.find((db: any) => (db?.name || '').toLowerCase() === effectiveD1Name.toLowerCase())
+					if (found) {
+						effectiveDatabaseId = String(found.uuid || found.id || found.database_id || '')
+						if (CF_DEBUG) logger.debug('[SetupInitial] Reusing existing D1:', { name: effectiveD1Name, id: effectiveDatabaseId })
+					}
+				}
+			} catch (e) {
+				if (CF_DEBUG) logger.warn('[SetupInitial] list D1 databases failed (non-fatal):', (e as Error)?.message)
+			}
+
+			// 2) Create if still missing
+			if (!effectiveDatabaseId) {
+				let created: any | null = null
+				try {
+					created = await cf(`/accounts/${accountId}/d1/database`, 'POST', { name: effectiveD1Name }, apiTokenFromHeader)
+				} catch (e1) {
+					if (CF_DEBUG) logger.warn('[SetupInitial] primary D1 create endpoint failed, trying fallback:', (e1 as Error)?.message)
+					created = await cf(`/accounts/${accountId}/d1/databases`, 'POST', { name: effectiveD1Name }, apiTokenFromHeader)
+				}
+				effectiveDatabaseId = String((created as any)?.uuid || (created as any)?.id || (created as any)?.database_id || '')
+				if (!effectiveDatabaseId) {
+					throw new Error('Failed to create D1 database')
+				}
+				if (CF_DEBUG) logger.debug('[SetupInitial] Created D1:', { name: effectiveD1Name, id: effectiveDatabaseId })
+			}
 		}
 
 		// Deploy Worker
@@ -100,42 +151,73 @@ export async function POST(request: NextRequest) {
   }
 }`,
 			bindings: [
-				{ type: 'd1_database', name: 'TEMP_MAIL_DB', database_id: databaseId },
+				{ type: 'd1_database', name: 'TEMP_MAIL_DB', database_id: effectiveDatabaseId },
 			],
 			vars: { MAIL_DOMAIN: mailDomain, JWT_TOKEN: finalJwtToken }
 		}, apiTokenFromHeader)
 
-		if (CF_DEBUG) logger.debug(`Deployed Worker script: ${scriptName}`)
+		if (CF_DEBUG) logger.debug(`[SetupInitial] Deployed Worker script: ${scriptName}`)
 
-		// Enable email routing and create catch-all per domain
+		// Enable email routing and ensure catch-all per domain (align with add-domain flow)
 		for (const domain of domains) {
 			try {
 				const zones = await cf<Array<{ id: string; name: string }>>(`/zones?name=${encodeURIComponent(domain)}`, 'GET', undefined, apiTokenFromHeader)
 				if (!Array.isArray(zones) || zones.length === 0) {
-					if (CF_DEBUG) logger.warn('Zone not found for', domain)
+					if (CF_DEBUG) logger.warn('[SetupInitial] Zone not found for', domain)
 					continue
 				}
 				const zoneId = zones[0].id
 				try {
 					await cf(`/zones/${zoneId}/email/routing/enable`, 'POST', undefined, apiTokenFromHeader)
 				} catch (e) {
-					if (CF_DEBUG) logger.debug('Email routing enable skipped:', (e as Error).message)
+					if (CF_DEBUG) logger.debug('[SetupInitial] Email routing enable skipped:', (e as Error).message)
 				}
 				try {
-					await cf(`/zones/${zoneId}/email/routing/rules`, 'POST', {
-						matchers: [{ type: 'all' }],
-						actions: [{ type: 'worker', value: scriptName }]
-					}, apiTokenFromHeader)
+					// Ensure catch-all using dedicated endpoint
+					const currentCatch = await cf<any>(`/zones/${zoneId}/email/routing/rules/catch_all`, 'GET', undefined, apiTokenFromHeader)
+					const referencesWorker = (rule: any) => Array.isArray(rule?.actions) && rule.actions.some((a: any) => {
+						if (a?.type !== 'worker') return false
+						const v = a?.value
+						if (typeof v === 'string') return v === scriptName
+						if (Array.isArray(v)) return v.includes(scriptName)
+						return false
+					})
+					const alreadyOk = referencesWorker(currentCatch) && currentCatch?.enabled === true
+					if (!alreadyOk) {
+						await cf(`/zones/${zoneId}/email/routing/rules/catch_all`, 'PUT', {
+							actions: [{ type: 'worker', value: [scriptName] }],
+							enabled: true
+						}, apiTokenFromHeader)
+					}
 				} catch (e) {
-					if (CF_DEBUG) logger.debug('Catch-all rule creation skipped:', (e as Error).message)
+					if (CF_DEBUG) logger.debug('[SetupInitial] Catch-all rule ensure skipped:', (e as Error).message)
 				}
 			} catch (e) {
-				if (CF_DEBUG) logger.warn('Routing setup failed for', domain, (e as Error).message)
+				if (CF_DEBUG) logger.warn('[SetupInitial] Routing setup failed for', domain, (e as Error).message)
 			}
 		}
 
-		const workerUrl = `https://${scriptName}.workers.dev`
-		return NextResponse.json({ success: true, workerUrl, scriptName })
+		// Discover the correct workers.dev subdomain for accurate workerUrl
+		let workerUrl = `https://${scriptName}.workers.dev`
+		try {
+			const subdomainResp = await cf<any>(`/accounts/${accountId}/workers/subdomain`, 'GET', undefined, apiTokenFromHeader)
+			const subdomain = (subdomainResp && typeof subdomainResp === 'object' && 'subdomain' in subdomainResp)
+				? (subdomainResp as any).subdomain
+				: (typeof subdomainResp === 'string' ? subdomainResp : '')
+			if (typeof subdomain === 'string' && subdomain.trim()) {
+				workerUrl = `https://${scriptName}.${subdomain}.workers.dev`
+			}
+		} catch (e) {
+			if (CF_DEBUG) logger.warn('[SetupInitial] subdomain discovery failed; using default workerUrl:', (e as Error)?.message)
+		}
+
+		return NextResponse.json({
+			success: true,
+			workerUrl,
+			scriptName,
+			d1: { name: effectiveD1Name, databaseId: effectiveDatabaseId },
+			domains
+		})
 	} catch (error) {
 		return NextResponse.json({ error: (error as Error).message }, { status: 500 })
 	}
