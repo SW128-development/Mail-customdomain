@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
 
 interface CloudflareApiError {
 	code?: number
@@ -12,6 +13,7 @@ interface CloudflareApiResponse<T = unknown> {
 }
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
+const CF_DEBUG = process.env.CF_DEBUG === '1'
 
 async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?: any) {
 	if (!CLOUDFLARE_API_TOKEN) {
@@ -30,11 +32,11 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 	})
 
 	const contentType = response.headers.get('content-type') || ''
-	console.log('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
+	if (CF_DEBUG) logger.debug('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
 
 	if (contentType.includes('application/json')) {
 		const jsonText = await response.text()
-		console.log('[CF API][json][raw]', jsonText.slice(0, 600))
+		if (CF_DEBUG) logger.debug('[CF API][json][raw]', jsonText.slice(0, 600))
 		try {
 			const data = JSON.parse(jsonText)
 			if (typeof (data as any).success === 'boolean' && 'result' in (data as any)) {
@@ -46,7 +48,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 			}
 			return data
 		} catch (e) {
-			console.error('[CF API][json][parse-error]', (e as Error)?.message)
+			logger.error('[CF API][json][parse-error]', (e as Error)?.message)
 			throw new Error(`Failed to parse JSON from Cloudflare: ${jsonText.slice(0, 200)}`)
 		}
 	}
@@ -54,10 +56,10 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 	if (contentType.includes('multipart/')) {
 		const boundaryMatch = contentType.match(/boundary=([^;]+)/i)
 		const raw = await response.text()
-		console.log('[CF API][multipart][raw-head]', raw.slice(0, 600))
+		if (CF_DEBUG) logger.debug('[CF API][multipart][raw-head]', raw.slice(0, 600))
 		if (boundaryMatch) {
 			const boundary = `--${boundaryMatch[1]}`
-			console.log('[CF API][multipart] boundary=', boundaryMatch[1])
+			if (CF_DEBUG) logger.debug('[CF API][multipart] boundary=', boundaryMatch[1])
 			const parts = raw.split(boundary)
 			let metadataJson: any | null = null
 			let scriptContent: string | null = null
@@ -68,7 +70,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 				const headerPreview = headers.replace(/\r?\n/g, ' ').trim().slice(0, 200)
 				const headersLower = headerPreview.toLowerCase()
 				if (headerPreview) {
-					console.log('[CF API][multipart][part-head]', headerPreview)
+					if (CF_DEBUG) logger.debug('[CF API][multipart][part-head]', headerPreview)
 				}
 				const isJsonLikely = headersLower.includes('name="metadata"') || headersLower.includes('name=metadata') || headersLower.includes('content-type: application/json') || headersLower.includes('name="manifest"') || headersLower.includes('filename="metadata"')
 				const isWorkerJs = headersLower.includes('name="worker.js"') || headersLower.includes('filename="worker.js"') || headersLower.includes('content-type: application/javascript')
@@ -77,7 +79,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 					const jsonEnd = body.lastIndexOf('}')
 					if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
 						const metaJson = body.slice(jsonStart, jsonEnd + 1)
-						console.log('[CF API][multipart][metadata-json-head]', metaJson.slice(0, 600))
+						if (CF_DEBUG) logger.debug('[CF API][multipart][metadata-json-head]', metaJson.slice(0, 600))
 						try {
 							metadataJson = JSON.parse(metaJson)
 						} catch {}
@@ -90,13 +92,13 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 			if (metadataJson || scriptContent) {
 				return { ...(metadataJson || {}), ...(scriptContent ? { script: scriptContent } : {}) }
 			}
-			console.warn('[CF API][multipart] metadata part not found. Parts count=', parts.length)
+			if (CF_DEBUG) logger.warn('[CF API][multipart] metadata part not found. Parts count=', parts.length)
 		}
 		throw new Error('Unexpected multipart response format from Cloudflare Workers API')
 	}
 
 	const text = await response.text()
-	console.log('[CF API][fallback][raw-head]', text.slice(0, 600))
+	if (CF_DEBUG) logger.debug('[CF API][fallback][raw-head]', text.slice(0, 600))
 	try {
 		const maybeJson = JSON.parse(text)
 		if (typeof (maybeJson as any).success === 'boolean' && 'result' in (maybeJson as any)) {
@@ -186,12 +188,12 @@ export async function POST(request: NextRequest) {
 		}
 
 		const currentDomains = domainsSource.split(',').map((d: string) => d.trim()).filter(Boolean)
-		console.log('[RemoveDomain] current domains=', currentDomains)
+		if (CF_DEBUG) logger.debug('[RemoveDomain] current domains=', currentDomains)
 
 		// Remove domain if present and update binding/secret accordingly
 		const updatedDomains = currentDomains.filter((d: string) => d !== domain)
 		const newMailDomain = updatedDomains.join(',')
-		console.log('[RemoveDomain] updating MAIL_DOMAIN ->', newMailDomain)
+		if (CF_DEBUG) logger.debug('[RemoveDomain] updating MAIL_DOMAIN ->', newMailDomain)
 
 		const mailDomainBinding = Array.isArray(bindings) ? bindings.find((b: any) => b?.name === 'MAIL_DOMAIN') : undefined
 		const isPlainTextVar = mailDomainBinding?.type === 'plain_text'
@@ -231,7 +233,7 @@ export async function POST(request: NextRequest) {
 			} catch (e: any) {
 				const message = e instanceof Error ? e.message : String(e)
 				if (message.includes('Binding name') || message.includes('10053')) {
-					console.warn('[RemoveDomain] Secret update indicates binding exists as VAR; falling back to worker re-upload with updated vars')
+					if (CF_DEBUG) logger.warn('[RemoveDomain] Secret update indicates binding exists as VAR; falling back to worker re-upload with updated vars')
 					const details = await callCloudflareAPI(`/accounts/${accountId}/workers/scripts/${scriptName}`, 'GET')
 					const script = (details as any)?.script as string
 					if (!script || typeof script !== 'string') {
@@ -260,7 +262,7 @@ export async function POST(request: NextRequest) {
 			}
 		}
 
-		console.log(`[RemoveDomain] removed domain ${domain} from worker ${scriptName}`)
+		if (CF_DEBUG) logger.debug(`[RemoveDomain] removed domain ${domain} from worker ${scriptName}`)
 		
 		return NextResponse.json({
 			success: true,
@@ -269,7 +271,7 @@ export async function POST(request: NextRequest) {
 		})
 
 	} catch (error) {
-		console.error('Remove domain error:', error)
+		logger.error('Remove domain error:', error)
 		return NextResponse.json(
 			{ error: `Failed to remove domain: ${error instanceof Error ? error.message : 'Unknown error'}` },
 			{ status: 500 }

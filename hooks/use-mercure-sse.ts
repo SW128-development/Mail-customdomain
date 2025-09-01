@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback, useState } from "react"
 import { fetchEventSource } from "@microsoft/fetch-event-source"
 import { useAuth } from "@/contexts/auth-context"
 import type { Message } from "@/types"
+import { logger } from "@/lib/logger"
 
 interface UseMercureSSEOptions {
   onNewMessage?: (message: Message) => void
@@ -27,7 +28,7 @@ export function useMercureSSE({
 
   const connect = useCallback(async () => {
     if (!enabled || !currentAccount || !token) {
-      console.log("🔌 [Mercure] Cannot connect - missing requirements")
+      logger.debug("🔌 [Mercure] Cannot connect - missing requirements")
       return
     }
 
@@ -58,13 +59,13 @@ export function useMercureSSE({
 
     const provider = presetProviders.find(p => p.id === providerId)
     if (!provider) {
-      console.error("❌ [Mercure] Cannot find provider configuration for:", providerId)
+      logger.error("❌ [Mercure] Cannot find provider configuration for:", providerId)
       return
     }
 
     // If provider does not support Mercure/SSE, skip quietly (fallback to polling)
     if (!provider.mercureUrl) {
-      console.log("ℹ️ [Mercure] Provider", providerId, "has no mercureUrl. Skipping SSE and relying on polling.")
+      logger.debug("ℹ️ [Mercure] Provider", providerId, "has no mercureUrl. Skipping SSE and relying on polling.")
       setIsConnected(false)
       return
     }
@@ -79,7 +80,7 @@ export function useMercureSSE({
       const mercureUrl = new URL(provider.mercureUrl)
       mercureUrl.searchParams.append("topic", `/accounts/${currentAccount.id}`)
 
-      console.log("🔌 [Mercure] Connecting to:", mercureUrl.toString())
+      logger.debug("🔌 [Mercure] Connecting to:", mercureUrl.toString())
 
       // 创建新的 AbortController
       const abortController = new AbortController()
@@ -95,11 +96,11 @@ export function useMercureSSE({
 
         onopen: async (response) => {
           if (response.ok) {
-            console.log("✅ [Mercure] Connected successfully")
+            logger.debug("✅ [Mercure] Connected successfully")
             setIsConnected(true)
             reconnectAttempts.current = 0
           } else {
-            console.error("❌ [Mercure] Connection failed:", response.status, response.statusText)
+            logger.error("❌ [Mercure] Connection failed:", response.status, response.statusText)
             setIsConnected(false)
             throw new Error(`HTTP ${response.status}: ${response.statusText}`)
           }
@@ -108,69 +109,69 @@ export function useMercureSSE({
         onmessage: (event) => {
           try {
             const data = JSON.parse(event.data)
-            console.log("📨 [Mercure] Received:", data)
+            logger.debug("📨 [Mercure] Received:", data)
 
             // 处理不同类型的事件
             if (data["@type"] === "Account") {
-              console.log("📧 [Mercure] Account updated - new message received!")
+              logger.debug("📧 [Mercure] Account updated - new message received!")
               onAccountUpdate?.(data)
             } else if (data["@type"] === "Message") {
-              console.log("📧 [Mercure] New message received directly!")
+              logger.debug("📧 [Mercure] New message received directly!")
               // 直接收到新消息，触发新消息回调
               onNewMessage?.(data)
               // 同时触发账户更新以刷新消息列表
               onAccountUpdate?.({ used: Date.now() }) // 模拟账户更新
             } else {
-              console.log("🔍 [Mercure] Received other event type:", data["@type"])
+              logger.debug("🔍 [Mercure] Received other event type:", data["@type"])
               // 对于未知类型，也尝试触发更新
               onAccountUpdate?.({ used: Date.now() })
             }
           } catch (error) {
-            console.error("❌ [Mercure] Error parsing message:", error)
-            console.log("Raw event data:", event.data)
+            logger.error("❌ [Mercure] Error parsing message:", error)
+            logger.debug("Raw event data:", event.data)
           }
         },
 
         onerror: (error) => {
-          console.error("❌ [Mercure] Connection error:", error)
+          logger.error("❌ [Mercure] Connection error:", error)
           setIsConnected(false)
 
           // 检查是否是CORS错误
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            console.error("❌ [Mercure] CORS error detected - check server configuration")
+            logger.error("❌ [Mercure] CORS error detected - check server configuration")
             if (provider) {
-              console.error(`❌ [Mercure] Make sure ${new URL(provider.mercureUrl).hostname} allows cross-origin requests from your domain`)
+              logger.error(`❌ [Mercure] Make sure ${new URL(provider.mercureUrl).hostname} allows cross-origin requests from your domain`)
             }
           }
 
           // 自动重连逻辑 - 更保守的重连策略
           if (reconnectAttempts.current < 2) { // 只重试2次
             const delay = Math.min(5000 * Math.pow(2, reconnectAttempts.current), 30000) // 5秒起步，最多30秒
-            console.log(`🔄 [Mercure] Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1})`)
+            logger.debug(`🔄 [Mercure] Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1})`)
 
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectAttempts.current++
               connect()
             }, delay)
           } else {
-            console.error("❌ [Mercure] Max reconnection attempts reached, falling back to polling")
+            logger.error("❌ [Mercure] Max reconnection attempts reached, falling back to polling")
             setIsConnected(false) // 确保状态正确
           }
         },
 
         onclose: () => {
-          console.log("🔌 [Mercure] Connection closed")
+          logger.debug("🔌 [Mercure] Connection closed")
           setIsConnected(false)
         }
       })
 
     } catch (error) {
-      console.error("❌ [Mercure] Failed to create connection:", error)
+      logger.error("❌ [Mercure] Failed to create connection:", error)
     }
   }, [enabled, currentAccount, token, onNewMessage, onMessageUpdate, onAccountUpdate])
 
   const disconnect = useCallback(() => {
-    console.log("🔌 [Mercure] Disconnecting...")
+    logger.debug("🔌 [Mercure] Disconnecting...")
 
     // 清理所有超时
     if (reconnectTimeoutRef.current) {

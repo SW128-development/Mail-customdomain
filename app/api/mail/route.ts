@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
 
 // 默认API提供商（向后兼容）
 const DEFAULT_API_BASE_URL = "https://api.duckmail.sbs"
@@ -39,13 +40,13 @@ async function handleRequest(
     signal: controller.signal,
   }
 
-  console.log(
+  logger.debug(
     `Proxying request to: ${apiBaseUrl}${endpoint}`,
     `Method: ${finalOptions.method || "GET"}`,
     `Headers: ${JSON.stringify(Object.fromEntries(requestHeaders.entries()))}`,
   )
   if (finalOptions.body) {
-    console.log(`Body: ${finalOptions.body}`)
+    logger.debug(`Body: ${finalOptions.body}`)
   }
 
   try {
@@ -53,13 +54,13 @@ async function handleRequest(
     clearTimeout(timeoutId)
 
     const responseContentType = response.headers.get("Content-Type") || "unknown"
-    console.log(
+    logger.debug(
       `Response from DuckMail API for ${endpoint}: Status ${response.status}, Content-Type: ${responseContentType}`,
     )
 
     if (!response.ok) {
       const errorBody = await response.text()
-      console.error(
+      logger.error(
         `API Error for ${endpoint}: ${response.status} ${response.statusText}`,
         `Response body: ${errorBody}`,
       )
@@ -82,13 +83,13 @@ async function handleRequest(
         const data = await response.json()
         return NextResponse.json(data)
       } catch (jsonError: any) {
-        console.error(
+        logger.error(
           `Error parsing JSON response from ${endpoint} (Content-Type: ${responseContentType}):`,
           jsonError.message,
         )
         // 如果 JSON 解析失败，尝试返回文本
         const textDataFallback = await response.text() // Re-read as text if original read failed or was not text
-        console.error(`Response text fallback: ${textDataFallback.substring(0, 200)}`)
+        logger.error(`Response text fallback: ${textDataFallback.substring(0, 200)}`)
         return NextResponse.json(
           {
             error: "Failed to parse JSON response from upstream API",
@@ -101,7 +102,7 @@ async function handleRequest(
       }
     } else {
       const textData = await response.text()
-      console.warn(
+      logger.warn(
         `Received non-JSON response from ${endpoint}: ${responseContentType}. Body: ${textData.substring(0, 100)}...`,
       )
       return new Response(textData, {
@@ -112,7 +113,7 @@ async function handleRequest(
   } catch (error: any) {
     clearTimeout(timeoutId)
     if (error.name === "AbortError") {
-      console.error(`API request to ${endpoint} timed out:`, error.message)
+      logger.error(`API request to ${endpoint} timed out:`, error.message)
       return NextResponse.json(
         {
           error: `Failed to fetch from API: Request to ${endpoint} timed out`,
@@ -121,7 +122,7 @@ async function handleRequest(
         { status: 504 }, // Gateway Timeout
       )
     }
-    console.error(`API Proxy Error for ${endpoint}:`, error.message, error.stack)
+    logger.error(`API Proxy Error for ${endpoint}:`, error.message, error.stack)
     return NextResponse.json(
       {
         error: `Failed to fetch from API for ${endpoint}`,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json()
   } catch (e) {
-    console.error("Error parsing POST request body:", e)
+    logger.error("Error parsing POST request body:", e)
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
@@ -193,7 +194,7 @@ export async function PATCH(request: NextRequest) {
   try {
     body = await request.json()
   } catch (e) {
-    console.error("Error parsing PATCH request body:", e)
+    logger.error("Error parsing PATCH request body:", e)
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
 
 interface AddDomainRequest {
 	domain: string
@@ -13,6 +14,7 @@ interface CloudflareApiResponse {
 }
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
+const CF_DEBUG = process.env.CF_DEBUG === '1'
 
 async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?: any, apiToken?: string, accept?: string) {
 	const token = apiToken || CLOUDFLARE_API_TOKEN
@@ -78,11 +80,11 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 	})
 
 	const contentType = response.headers.get('content-type') || ''
-	console.log('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
+	if (CF_DEBUG) logger.debug('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
 
 	if (contentType.includes('application/json')) {
 		const jsonText = await response.text()
-		console.log('[CF API][json][raw]', jsonText.slice(0, 600))
+		if (CF_DEBUG) logger.debug('[CF API][json][raw]', jsonText.slice(0, 600))
 		try {
 			const data = JSON.parse(jsonText)
 			if (typeof (data as any).success === 'boolean' && 'result' in (data as any)) {
@@ -94,7 +96,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 			}
 			return data
 		} catch (e) {
-			console.error('[CF API][json][parse-error]', (e as Error)?.message)
+			logger.error('[CF API][json][parse-error]', (e as Error)?.message)
 			throw new Error(`Failed to parse JSON from Cloudflare: ${jsonText.slice(0, 200)}`)
 		}
 	}
@@ -108,12 +110,12 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 	if (contentType.includes('multipart/')) {
 		const boundaryMatch = contentType.match(/boundary=([^;]+)/i)
 		const raw = await response.text()
-		console.log('[CF API][multipart][raw-head]', raw.slice(0, 600))
+		if (CF_DEBUG) logger.debug('[CF API][multipart][raw-head]', raw.slice(0, 600))
 		if (boundaryMatch) {
 			const boundary = `--${boundaryMatch[1]}`
-			console.log('[CF API][multipart] boundary=', boundaryMatch[1])
+			if (CF_DEBUG) logger.debug('[CF API][multipart] boundary=', boundaryMatch[1])
 			const parts = raw.split(boundary)
-			console.log('[CF API][multipart] parts=', parts.length)
+			if (CF_DEBUG) logger.debug('[CF API][multipart] parts=', parts.length)
 			let metadataJson: any | null = null
 			let scriptContent: string | null = null
 			for (const part of parts) {
@@ -123,7 +125,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 				const headerPreview = headers.replace(/\r?\n/g, ' ').trim().slice(0, 200)
 				const headersLower = headerPreview.toLowerCase()
 				if (headerPreview) {
-					console.log('[CF API][multipart][part-head]', headerPreview)
+					if (CF_DEBUG) logger.debug('[CF API][multipart][part-head]', headerPreview)
 				}
 				const isJsonLikely = headersLower.includes('name="metadata"')
 					|| headersLower.includes('name=metadata')
@@ -139,11 +141,11 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 					const jsonEnd = body.lastIndexOf('}')
 					if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
 						const metaJson = body.slice(jsonStart, jsonEnd + 1)
-						console.log('[CF API][multipart][json-head]', metaJson.slice(0, 600))
+						if (CF_DEBUG) logger.debug('[CF API][multipart][json-head]', metaJson.slice(0, 600))
 						try {
 							metadataJson = JSON.parse(metaJson)
 						} catch (e) {
-							console.warn('[CF API][multipart] failed to parse JSON part:', (e as Error)?.message)
+							if (CF_DEBUG) logger.warn('[CF API][multipart] failed to parse JSON part:', (e as Error)?.message)
 						}
 					}
 				} else if (isWorkerJs) {
@@ -158,13 +160,13 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
 					...(scriptContent ? { script: scriptContent } : {}),
 				}
 			}
-			console.warn('[CF API][multipart] metadata/manifest JSON part not found. Parts count=', parts.length)
+			if (CF_DEBUG) logger.warn('[CF API][multipart] metadata/manifest JSON part not found. Parts count=', parts.length)
 		}
 		throw new Error('Unexpected multipart response format from Cloudflare Workers API')
 	}
 
 	const text = await response.text()
-	console.log('[CF API][fallback][raw-head]', text.slice(0, 600))
+	if (CF_DEBUG) logger.debug('[CF API][fallback][raw-head]', text.slice(0, 600))
 	try {
 		const maybeJson = JSON.parse(text)
 		if (typeof (maybeJson as any).success === 'boolean' && 'result' in (maybeJson as any)) {
@@ -223,7 +225,7 @@ export async function POST(request: NextRequest) {
 				}
 			}
 		} catch (e) {
-			console.warn('[AddDomain] failed to query custom worker domains:', (e as Error)?.message)
+			if (CF_DEBUG) logger.warn('[AddDomain] failed to query custom worker domains:', (e as Error)?.message)
 		}
 
 		// Fallback to account workers.dev subdomain-based URL
@@ -253,7 +255,7 @@ export async function POST(request: NextRequest) {
 					}
 				}
 			} catch (e) {
-				console.warn('[AddDomain] failed to query default worker domains:', (e as Error)?.message)
+				if (CF_DEBUG) logger.warn('[AddDomain] failed to query default worker domains:', (e as Error)?.message)
 			}
 		}
 
@@ -268,7 +270,7 @@ export async function POST(request: NextRequest) {
 					}
 				}
 			} catch (e) {
-				console.warn('[AddDomain] could not fetch bindings for existing domains:', (e as Error)?.message)
+				if (CF_DEBUG) logger.warn('[AddDomain] could not fetch bindings for existing domains:', (e as Error)?.message)
 			}
 		}
 
@@ -280,35 +282,35 @@ export async function POST(request: NextRequest) {
 				const mailDomain = currentVars.MAIL_DOMAIN || ''
 				existingDomains = mailDomain.split(',').filter((d: string) => d.trim()).map((d: string) => d.trim())
 			} catch (e) {
-				console.warn('[AddDomain] could not fetch worker metadata for existing domains:', (e as Error)?.message)
+				if (CF_DEBUG) logger.warn('[AddDomain] could not fetch worker metadata for existing domains:', (e as Error)?.message)
 			}
 		}
 
 		if (existingDomains.includes(domain)) {
-			console.log('[AddDomain] domain already present; continuing to ensure routing')
+			if (CF_DEBUG) logger.debug('[AddDomain] domain already present; continuing to ensure routing')
 		} 
 
 		// Step 1: Get zone for the domain
-		console.log('[AddDomain] domain=', domain, 'accountId=', accountId, 'scriptName=', scriptName)
-		console.log('[AddDomain] looking up zone')
+		if (CF_DEBUG) logger.debug('[AddDomain] domain=', domain, 'accountId=', accountId, 'scriptName=', scriptName)
+		if (CF_DEBUG) logger.debug('[AddDomain] looking up zone')
 		const zones = await callCloudflareAPI(`/zones?name=${domain}`, 'GET', undefined, tokenToUse)
-		console.log('[AddDomain] zones length=', zones?.length)
+		if (CF_DEBUG) logger.debug('[AddDomain] zones length=', zones?.length)
 		if (zones.length === 0) {
-			console.warn(`[AddDomain] Zone not found for domain: ${domain}; continuing without routing setup`)
+			if (CF_DEBUG) logger.warn(`[AddDomain] Zone not found for domain: ${domain}; continuing without routing setup`)
 		} else {
 			const zone = zones[0]
-			console.log('[AddDomain] zoneId=', zone.id)
+			if (CF_DEBUG) logger.debug('[AddDomain] zoneId=', zone.id)
 
 			// Step 2: Enable email routing for the zone (best-effort)
 			try {
-				console.log('[AddDomain] enabling email routing')
+				if (CF_DEBUG) logger.debug('[AddDomain] enabling email routing')
 				await callCloudflareAPI(`/zones/${zone.id}/email/routing/enable`, 'POST', undefined, tokenToUse)
 			} catch (e) {
-				console.warn(`[AddDomain] email routing enable failed (non-blocking):`, (e as Error)?.message)
+				if (CF_DEBUG) logger.warn(`[AddDomain] email routing enable failed (non-blocking):`, (e as Error)?.message)
 			}
 
 			// Step 3: Ensure catch-all rule with catch_all endpoint
-			console.log('[AddDomain] ensuring catch-all rule targeting worker=', scriptName)
+			if (CF_DEBUG) logger.debug('[AddDomain] ensuring catch-all rule targeting worker=', scriptName)
 			try {
 				const currentCatch = await callCloudflareAPI(`/zones/${zone.id}/email/routing/rules/catch_all`, 'GET', undefined, tokenToUse)
 				const referencesWorker = (rule: any) => Array.isArray(rule?.actions) && rule.actions.some((a: any) => {
@@ -327,14 +329,14 @@ export async function POST(request: NextRequest) {
 				}
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : String(e)
-				console.warn('[AddDomain] catch-all rule ensure failed (non-blocking):', msg)
+				if (CF_DEBUG) logger.warn('[AddDomain] catch-all rule ensure failed (non-blocking):', msg)
 			}
 		}
 
 		// Step 4: Update MAIL_DOMAIN via secrets API (no script re-upload)
 		const updatedDomains = existingDomains.includes(domain) ? existingDomains : [...existingDomains, domain]
 		const newMailDomain = updatedDomains.join(',')
-		console.log('[AddDomain] updating MAIL_DOMAIN secret ->', newMailDomain)
+		if (CF_DEBUG) logger.debug('[AddDomain] updating MAIL_DOMAIN secret ->', newMailDomain)
 		try {
 			await callCloudflareAPI(`/accounts/${accountId}/workers/scripts/${scriptName}/secrets`, 'PUT', {
 				name: 'MAIL_DOMAIN',
@@ -344,14 +346,14 @@ export async function POST(request: NextRequest) {
 		} catch (e: any) {
 			const message = e instanceof Error ? e.message : String(e)
 			if (message.includes('Binding name') || message.includes('10053')) {
-				console.warn('[AddDomain] Secret update indicates binding exists as VAR; falling back to worker re-upload with updated vars')
+				if (CF_DEBUG) logger.warn('[AddDomain] Secret update indicates binding exists as VAR; falling back to worker re-upload with updated vars')
 				// Fallback: fetch current script and bindings, then reupload with updated vars
 				let script: string | undefined
 				try {
 					const details = await callCloudflareAPI(`/accounts/${accountId}/workers/scripts/${scriptName}`, 'GET', undefined, tokenToUse, 'application/javascript')
 					script = (details as any)?.script as string
 				} catch (e2) {
-					console.warn('[AddDomain] primary script fetch failed, trying multipart:', (e2 as Error)?.message)
+					if (CF_DEBUG) logger.warn('[AddDomain] primary script fetch failed, trying multipart:', (e2 as Error)?.message)
 					const details = await callCloudflareAPI(`/accounts/${accountId}/workers/scripts/${scriptName}`, 'GET', undefined, tokenToUse, 'application/json')
 					script = (details as any)?.script as string
 				}
@@ -369,11 +371,11 @@ export async function POST(request: NextRequest) {
 			}
 		}
 
-		console.log(`[AddDomain] added domain ${domain} to worker ${scriptName}`)
+		if (CF_DEBUG) logger.debug(`[AddDomain] added domain ${domain} to worker ${scriptName}`)
 		return NextResponse.json({ success: true, domain, domains: updatedDomains })
 
 	} catch (error) {
-		console.error('Add domain error:', error)
+		logger.error('Add domain error:', error)
 		return NextResponse.json(
 			{ error: `Failed to add domain: ${error instanceof Error ? error.message : 'Unknown error'}` },
 			{ status: 500 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
 
 interface CloudflareApiResponse {
   success: boolean
@@ -7,6 +8,7 @@ interface CloudflareApiResponse {
 }
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
+const CF_DEBUG = process.env.CF_DEBUG === '1'
 
 async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?: any, apiToken?: string, accept?: string) {
   const token = apiToken || CLOUDFLARE_API_TOKEN
@@ -30,12 +32,12 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
   })
 
   const contentType = response.headers.get('content-type') || ''
-  console.log('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
+  if (CF_DEBUG) logger.debug('[CF API]', method, endpoint, 'status=', response.status, 'content-type=', contentType)
 
   // JSON branch: log and parse from raw text for transparency
   if (contentType.includes('application/json')) {
     const jsonText = await response.text()
-    console.log('[CF API][json][raw]', jsonText.slice(0, 600))
+    if (CF_DEBUG) logger.debug('[CF API][json][raw]', jsonText.slice(0, 600))
     try {
       const data = JSON.parse(jsonText)
       if (typeof (data as any).success === 'boolean' && 'result' in (data as any)) {
@@ -47,7 +49,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
       }
       return data
     } catch (e) {
-      console.error('[CF API][json][parse-error]', (e as Error)?.message)
+      logger.error('[CF API][json][parse-error]', (e as Error)?.message)
       throw new Error(`Failed to parse JSON from Cloudflare: ${jsonText.slice(0, 200)}`)
     }
   }
@@ -62,12 +64,12 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
   if (contentType.includes('multipart/')) {
     const boundaryMatch = contentType.match(/boundary=([^;]+)/i)
     const raw = await response.text()
-    console.log('[CF API][multipart][raw-head]', raw.slice(0, 600))
+    if (CF_DEBUG) logger.debug('[CF API][multipart][raw-head]', raw.slice(0, 600))
     if (boundaryMatch) {
       const boundary = `--${boundaryMatch[1]}`
-      console.log('[CF API][multipart] boundary=', boundaryMatch[1])
+      if (CF_DEBUG) logger.debug('[CF API][multipart] boundary=', boundaryMatch[1])
       const parts = raw.split(boundary)
-      console.log('[CF API][multipart] parts=', parts.length)
+      if (CF_DEBUG) logger.debug('[CF API][multipart] parts=', parts.length)
       let metadataJson: any | null = null
       let scriptContent: string | null = null
       for (const part of parts) {
@@ -77,7 +79,7 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
         const headerPreview = headers.replace(/\r?\n/g, ' ').trim().slice(0, 200)
         const headersLower = headerPreview.toLowerCase()
         if (headerPreview) {
-          console.log('[CF API][multipart][part-head]', headerPreview)
+          if (CF_DEBUG) logger.debug('[CF API][multipart][part-head]', headerPreview)
         }
         const isJsonLikely = headersLower.includes('name="metadata"')
           || headersLower.includes('name=metadata')
@@ -93,11 +95,11 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
           const jsonEnd = body.lastIndexOf('}')
           if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
             const metaJson = body.slice(jsonStart, jsonEnd + 1)
-            console.log('[CF API][multipart][json-head]', metaJson.slice(0, 600))
+            if (CF_DEBUG) logger.debug('[CF API][multipart][json-head]', metaJson.slice(0, 600))
             try {
               metadataJson = JSON.parse(metaJson)
             } catch (e) {
-              console.warn('[CF API][multipart] failed to parse JSON part:', (e as Error)?.message)
+              if (CF_DEBUG) logger.warn('[CF API][multipart] failed to parse JSON part:', (e as Error)?.message)
             }
           }
         }
@@ -112,14 +114,14 @@ async function callCloudflareAPI(endpoint: string, method: string = 'GET', body?
           ...(scriptContent ? { script: scriptContent } : {}),
         }
       }
-      console.warn('[CF API][multipart] metadata/manifest JSON part not found. Parts count=', parts.length)
+      if (CF_DEBUG) logger.warn('[CF API][multipart] metadata/manifest JSON part not found. Parts count=', parts.length)
     }
     throw new Error('Unexpected multipart response format from Cloudflare Workers API')
   }
 
   // Fallback: try to read text and parse error details
   const text = await response.text()
-  console.log('[CF API][fallback][raw-head]', text.slice(0, 600))
+  if (CF_DEBUG) logger.debug('[CF API][fallback][raw-head]', text.slice(0, 600))
   try {
     const maybeJson = JSON.parse(text)
     if (typeof (maybeJson as any).success === 'boolean' && 'result' in (maybeJson as any)) {
@@ -143,10 +145,10 @@ async function checkWorkerHealth(workerUrl: string): Promise<boolean> {
         'Accept': 'application/json',
       },
     })
-    console.log('[Worker][health]', workerUrl, 'status=', response.status)
+    if (CF_DEBUG) logger.debug('[Worker][health]', workerUrl, 'status=', response.status)
     return response.ok
   } catch (error) {
-    console.error('Worker health check failed:', error)
+    logger.error('Worker health check failed:', error)
     return false
   }
 }
@@ -184,7 +186,7 @@ export async function GET(request: NextRequest) {
     
     if (customWorkerUrl && customWorkerUrl.includes(scriptName)) {
       workerUrl = customWorkerUrl
-      console.log('[Status] Using custom worker URL from env:', workerUrl)
+      if (CF_DEBUG) logger.debug('[Status] Using custom worker URL from env:', workerUrl)
     } else {
       // Discover the account workers.dev subdomain
       try {
@@ -198,10 +200,10 @@ export async function GET(request: NextRequest) {
           workerUrl = `https://${scriptName}.${accountId.substring(0, 8)}.workers.dev`
         }
       } catch (e) {
-        console.warn('[Status] subdomain discovery failed:', (e as Error)?.message)
+        if (CF_DEBUG) logger.warn('[Status] subdomain discovery failed:', (e as Error)?.message)
         workerUrl = `https://${scriptName}.${accountId.substring(0, 8)}.workers.dev`
       }
-      console.log('[Status] Using account-based worker URL:', workerUrl)
+      if (CF_DEBUG) logger.debug('[Status] Using account-based worker URL:', workerUrl)
     }
 
     // Check worker health
@@ -223,18 +225,18 @@ export async function GET(request: NextRequest) {
             .map((d: string) => d.trim())
         }
         mailDomain = domains.join(',')
-        console.log('[Worker]/domains ->', domains)
+        if (CF_DEBUG) logger.debug('[Worker]/domains ->', domains)
       } else {
-        console.warn('[Worker]/domains non-200 status=', domResp.status)
+        if (CF_DEBUG) logger.warn('[Worker]/domains non-200 status=', domResp.status)
       }
     } catch (err) {
-      console.warn('[Worker]/domains fetch failed:', err)
+      if (CF_DEBUG) logger.warn('[Worker]/domains fetch failed:', err)
     }
 
     // Try to fetch worker metadata for bindings/vars; do not fail status if it errors
     let workerScript: any = null
     try {
-      console.log(`Checking status for worker: ${scriptName}`)
+      if (CF_DEBUG) logger.debug(`Checking status for worker: ${scriptName}`)
       // If we already have domains from the worker, skip metadata fetch to avoid multipart parsing instability
       if (domains.length === 0) {
         // Prefer JavaScript content to avoid multipart instability, fall back to JSON/multipart parsing
@@ -246,7 +248,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (e) {
-      console.warn('[Status] worker metadata fetch failed; continuing with partial data:', (e as Error)?.message)
+      if (CF_DEBUG) logger.warn('[Status] worker metadata fetch failed; continuing with partial data:', (e as Error)?.message)
     }
 
     // Bindings-based domain discovery
@@ -261,7 +263,7 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (e) {
-        console.warn('[Status] bindings fetch failed; continuing:', (e as Error)?.message)
+        if (CF_DEBUG) logger.warn('[Status] bindings fetch failed; continuing:', (e as Error)?.message)
       }
     }
 
@@ -281,9 +283,9 @@ export async function GET(request: NextRequest) {
     
     for (const domain of domains) {
       try {
-        console.log('[Domain][check] searching zone for', domain)
+        if (CF_DEBUG) logger.debug('[Domain][check] searching zone for', domain)
         const zones = await callCloudflareAPI(`/zones?name=${domain}`, 'GET', undefined, apiToken)
-        console.log('[Domain][check] zones found=', zones?.length)
+        if (CF_DEBUG) logger.debug('[Domain][check] zones found=', zones?.length)
         if (zones.length === 0) {
           domainStatuses.push({
             domain,
@@ -296,17 +298,17 @@ export async function GET(request: NextRequest) {
         }
         
         const zone = zones[0]
-        console.log('[Domain][check] zoneId=', zone.id)
+        if (CF_DEBUG) logger.debug('[Domain][check] zoneId=', zone.id)
         
         // Check email routing status (treat permission issues as unknown)
         let emailRoutingEnabled: boolean | null = null
         try {
           const emailRouting = await callCloudflareAPI(`/zones/${zone.id}/email/routing`, 'GET', undefined, apiToken)
           emailRoutingEnabled = !!emailRouting.enabled
-          console.log('[Domain][check] emailRoutingEnabled=', emailRoutingEnabled)
+          if (CF_DEBUG) logger.debug('[Domain][check] emailRoutingEnabled=', emailRoutingEnabled)
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)
-          console.warn(`[Domain][check] email routing status unknown (permission or error):`, msg)
+          if (CF_DEBUG) logger.warn(`[Domain][check] email routing status unknown (permission or error):`, msg)
           emailRoutingEnabled = null
         }
 
@@ -325,9 +327,9 @@ export async function GET(request: NextRequest) {
             })
             return hasCatchAllMatcher && hasWorkerAction
           })
-          console.log('[Domain][check] catchAllRuleExists=', catchAllRuleExists)
+          if (CF_DEBUG) logger.debug('[Domain][check] catchAllRuleExists=', catchAllRuleExists)
         } catch (e) {
-          console.warn(`[Domain][check] catch-all rules unknown (permission or error):`, (e as Error)?.message)
+          if (CF_DEBUG) logger.warn(`[Domain][check] catch-all rules unknown (permission or error):`, (e as Error)?.message)
           catchAllRuleExists = null
         }
         
@@ -345,7 +347,7 @@ export async function GET(request: NextRequest) {
         })
         
       } catch (error) {
-        console.error(`Error checking status for domain ${domain}:`, error)
+        logger.error(`Error checking status for domain ${domain}:`, error)
         domainStatuses.push({
           domain,
           zoneFound: false,
@@ -389,7 +391,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    console.error('Status check error:', error)
+    logger.error('Status check error:', error)
     return NextResponse.json(
       { error: `Failed to check status: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }

@@ -51,7 +51,17 @@ export function ApiProviderProvider({ children }: ApiProviderProviderProps) {
   const [disabledProviderIds, setDisabledProviderIds] = useState<string[]>([])
 
   // 所有提供商（预设 + 自定义）
-  const providers = [...PRESET_PROVIDERS, ...customProviders]
+  // 如果存在自定义的 Cloudflare 提供商，则隐藏预设的 Cloudflare，避免重复显示
+  const hasCustomCloudflare = customProviders.some(p => {
+    const name = (p.name || "").toLowerCase()
+    const url = (p.baseUrl || "").toLowerCase()
+    const presetCfUrl = (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "https://duckmail-cloudflare-provider.lungw96.workers.dev").toLowerCase()
+    return name.includes("cloudflare") || url.includes(".workers.dev") || (presetCfUrl && url === presetCfUrl)
+  })
+  const presetProviders = hasCustomCloudflare
+    ? PRESET_PROVIDERS.filter(p => p.id !== "cloudflare")
+    : PRESET_PROVIDERS
+  const providers = [...presetProviders, ...customProviders]
 
   // 启用的提供商
   const enabledProviders = providers.filter(provider =>

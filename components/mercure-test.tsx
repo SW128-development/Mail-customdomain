@@ -5,6 +5,7 @@ import { Button } from "@heroui/button"
 import { Card, CardBody, CardHeader } from "@heroui/card"
 import { useAuth } from "@/contexts/auth-context"
 import { useApiProvider } from "@/contexts/api-provider-context"
+import { logger } from "@/lib/logger"
 
 export function MercureTest() {
   const { currentAccount } = useAuth()
@@ -34,14 +35,14 @@ export function MercureTest() {
       const mercureUrl = new URL(provider.mercureUrl)
       mercureUrl.searchParams.append("topic", `/accounts/${currentAccount.id}`)
 
-      console.log("🔌 Connecting to Mercure:", mercureUrl.toString())
+      logger.debug("🔌 Connecting to Mercure:", mercureUrl.toString())
       
       const es = new EventSource(mercureUrl.toString())
       setEventSource(es)
       setError(null)
 
       es.onopen = () => {
-        console.log("✅ Mercure connected")
+        logger.debug("✅ Mercure connected")
         setIsConnected(true)
         setEvents(prev => [...prev, {
           type: "connection",
@@ -51,7 +52,7 @@ export function MercureTest() {
       }
 
       es.onmessage = (event) => {
-        console.log("📨 Mercure message:", event.data)
+        logger.debug("📨 Mercure message:", event.data)
         try {
           const data = JSON.parse(event.data)
           setEvents(prev => [...prev, {
@@ -69,7 +70,7 @@ export function MercureTest() {
       }
 
       es.onerror = (error) => {
-        console.error("❌ Mercure error:", error)
+        logger.error("❌ Mercure error:", error)
         setIsConnected(false)
         setError("连接错误，可能 Mercure 服务不可用")
         setEvents(prev => [...prev, {
@@ -80,7 +81,7 @@ export function MercureTest() {
       }
 
     } catch (error: any) {
-      console.error("❌ Failed to connect:", error)
+      logger.error("❌ Failed to connect:", error)
       setError(`连接失败: ${error.message}`)
     }
   }

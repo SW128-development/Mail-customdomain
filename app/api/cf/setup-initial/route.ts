@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomBytes } from "crypto"
+import { logger } from "@/lib/logger"
 
 interface CloudflareApiError {
 	code?: number
@@ -15,6 +16,10 @@ interface CloudflareEnvelope<T> {
 
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
 const DEFAULT_JWT_TOKEN = process.env.CLOUDFLARE_JWT_TOKEN || process.env.JWT_TOKEN
+const CF_DEBUG = (() => {
+	const raw = process.env.CF_DEBUG ?? (process.env as any).cf_debug
+	return typeof raw === 'string' && ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase())
+})()
 
 interface SetupInitialRequest {
 	accountId: string
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest) {
 		}
 
 		// Deploy Worker
-		console.log('Deploying Worker script...')
+		if (CF_DEBUG) logger.debug('Deploying Worker script...')
 		const finalJwtToken = DEFAULT_JWT_TOKEN || jwtToken || randomBytes(32).toString('base64url')
 		const mailDomain = domains.join(',')
 
@@ -100,21 +105,21 @@ export async function POST(request: NextRequest) {
 			vars: { MAIL_DOMAIN: mailDomain, JWT_TOKEN: finalJwtToken }
 		}, apiTokenFromHeader)
 
-		console.log(`Deployed Worker script: ${scriptName}`)
+		if (CF_DEBUG) logger.debug(`Deployed Worker script: ${scriptName}`)
 
 		// Enable email routing and create catch-all per domain
 		for (const domain of domains) {
 			try {
 				const zones = await cf<Array<{ id: string; name: string }>>(`/zones?name=${encodeURIComponent(domain)}`, 'GET', undefined, apiTokenFromHeader)
 				if (!Array.isArray(zones) || zones.length === 0) {
-					console.warn('Zone not found for', domain)
+					if (CF_DEBUG) logger.warn('Zone not found for', domain)
 					continue
 				}
 				const zoneId = zones[0].id
 				try {
 					await cf(`/zones/${zoneId}/email/routing/enable`, 'POST', undefined, apiTokenFromHeader)
 				} catch (e) {
-					console.log('Email routing enable skipped:', (e as Error).message)
+					if (CF_DEBUG) logger.debug('Email routing enable skipped:', (e as Error).message)
 				}
 				try {
 					await cf(`/zones/${zoneId}/email/routing/rules`, 'POST', {
@@ -122,10 +127,10 @@ export async function POST(request: NextRequest) {
 						actions: [{ type: 'worker', value: scriptName }]
 					}, apiTokenFromHeader)
 				} catch (e) {
-					console.log('Catch-all rule creation skipped:', (e as Error).message)
+					if (CF_DEBUG) logger.debug('Catch-all rule creation skipped:', (e as Error).message)
 				}
 			} catch (e) {
-				console.warn('Routing setup failed for', domain, (e as Error).message)
+				if (CF_DEBUG) logger.warn('Routing setup failed for', domain, (e as Error).message)
 			}
 		}
 

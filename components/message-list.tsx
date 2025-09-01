@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { formatDistanceToNow } from "date-fns"
 import { enUS, zhCN } from "date-fns/locale" // Import both locales
 import { Mail } from "lucide-react"
+import { logger } from "@/lib/logger"
 
 interface MessageListProps {
   onSelectMessage: (message: Message) => void
@@ -61,7 +62,7 @@ export default function MessageList({ onSelectMessage, currentLocale, refreshKey
       setMessages(fetchedMessages || [])
       setError(null)
     } catch (err) {
-      console.error("Failed to refresh messages:", err)
+      logger.error("Failed to refresh messages:", err)
       setError(currentLocale === "en" ? "Failed to refresh emails. Please try again." : "刷新邮件失败，请稍后再试")
     } finally {
       setLoading(false)
@@ -80,9 +81,9 @@ export default function MessageList({ onSelectMessage, currentLocale, refreshKey
   // 调试信息
   useEffect(() => {
     if (smartChecker.isUsingMercure) {
-      console.log("🚀 [MessageList] Using Mercure SSE for real-time updates")
+      logger.debug("🚀 [MessageList] Using Mercure SSE for real-time updates")
     } else if (smartChecker.isUsingPolling) {
-      console.log("🔄 [MessageList] Using polling as fallback")
+      logger.debug("🔄 [MessageList] Using polling as fallback")
     }
   }, [smartChecker.isUsingMercure, smartChecker.isUsingPolling])
 
@@ -90,7 +91,7 @@ export default function MessageList({ onSelectMessage, currentLocale, refreshKey
   useEffect(() => {
     const fetchInitialMessages = async () => {
       if (!token || !currentAccount) {
-        console.log("📥 [MessageList] No token or account, clearing messages")
+        logger.debug("📥 [MessageList] No token or account, clearing messages")
         setMessages([])
         setLoading(false)
         return
@@ -98,14 +99,14 @@ export default function MessageList({ onSelectMessage, currentLocale, refreshKey
 
       try {
         setLoading(true)
-        console.log(`📥 [MessageList] Loading initial messages for account: ${currentAccount.address}`)
+        logger.debug(`📥 [MessageList] Loading initial messages for account: ${currentAccount.address}`)
         const providerId = currentAccount.providerId || "duckmail"
         const { messages: fetchedMessages } = await getMessages(token, 1, providerId)
         setMessages(fetchedMessages || [])
         setError(null)
-        console.log(`📥 [MessageList] Loaded ${fetchedMessages?.length || 0} initial messages`)
+        logger.debug(`📥 [MessageList] Loaded ${fetchedMessages?.length || 0} initial messages`)
       } catch (err) {
-        console.error("Failed to fetch messages:", err)
+        logger.error("Failed to fetch messages:", err)
         setError(currentLocale === "en" ? "Failed to fetch emails. Please try again." : "获取邮件失败，请稍后再试")
         setMessages([])
       } finally {

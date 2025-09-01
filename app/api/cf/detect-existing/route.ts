@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
 
 // Check environment variables for existing configuration
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
@@ -9,9 +10,14 @@ const CLOUDFLARE_D1_ID = process.env.CLOUDFLARE_D1_ID || '70bece35-d5bf-487b-973
 const MAIL_DOMAIN = process.env.MAIL_DOMAIN || '10xco.de'
 const CUSTOM_WORKER_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL
 
+const CF_DEBUG = (() => {
+  const raw = process.env.CF_DEBUG ?? (process.env as any).cf_debug
+  return typeof raw === 'string' && ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase())
+})()
+
 async function testWorkerUrl(url: string): Promise<{ success: boolean; domains?: string[] }> {
   try {
-    console.log('[DetectExisting] Testing worker URL:', url)
+    if (CF_DEBUG) logger.debug('[DetectExisting] Testing worker URL:', url)
     const testResponse = await fetch(`${url}/domains`, {
       method: 'GET',
       headers: {
@@ -22,7 +28,7 @@ async function testWorkerUrl(url: string): Promise<{ success: boolean; domains?:
     
     if (testResponse.ok) {
       const data = await testResponse.json()
-      console.log('[DetectExisting] Worker response:', data)
+      if (CF_DEBUG) logger.debug('[DetectExisting] Worker response:', data)
       // Update domains from actual worker response if available
       if (Array.isArray(data)) {
         const domains = data.map((d: any) => d.domain || d).filter(Boolean)
@@ -32,7 +38,7 @@ async function testWorkerUrl(url: string): Promise<{ success: boolean; domains?:
     }
     return { success: false }
   } catch (error) {
-    console.log('[DetectExisting] Worker test failed for', url, ':', (error as Error)?.message)
+    if (CF_DEBUG) logger.warn('[DetectExisting] Worker test failed for', url, ':', (error as Error)?.message)
     return { success: false }
   }
 }
@@ -64,7 +70,7 @@ export async function GET(request: NextRequest) {
         if (customTest.domains) {
           workingDomains = customTest.domains
         }
-        console.log('[DetectExisting] Using custom worker URL:', workerUrl)
+        if (CF_DEBUG) logger.debug('[DetectExisting] Using custom worker URL:', workerUrl)
       }
     }
     
@@ -102,14 +108,14 @@ export async function GET(request: NextRequest) {
                   if (accountTest.domains) {
                     workingDomains = accountTest.domains
                   }
-                  console.log('[DetectExisting] Using resolved worker URL:', workerUrl)
+                  if (CF_DEBUG) logger.debug('[DetectExisting] Using resolved worker URL:', workerUrl)
                 }
               }
             }
           }
         }
       } catch (apiError) {
-        console.log('[DetectExisting] API-based detection failed:', apiError)
+        if (CF_DEBUG) logger.warn('[DetectExisting] API-based detection failed:', apiError)
       }
     }
     
@@ -130,7 +136,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error detecting existing setup:', error)
+    logger.error('Error detecting existing setup:', error)
     return NextResponse.json(
       { 
         success: false,

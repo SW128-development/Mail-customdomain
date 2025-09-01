@@ -1,4 +1,5 @@
 import type { Account, Domain, Message, MessageDetail } from "@/types"
+import { logger } from "@/lib/logger"
 
 const API_BASE_URL = "/api/mail"
 const CF_BASE_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "https://duckmail-cloudflare-provider.lungw96.workers.dev"
@@ -390,7 +391,7 @@ export async function getAccount(token: string, providerId?: string): Promise<Ac
 
 export async function getMessages(token: string, page = 1, providerId?: string): Promise<{ messages: Message[]; total: number; hasMore: boolean }> {
   const timestamp = new Date().toISOString()
-  console.log(`📡 [API] getMessages called at ${timestamp} - page: ${page}`)
+  logger.debug(`📡 [API] getMessages called at ${timestamp} - page: ${page}`)
 
   const response = await retryFetch(async () => {
     const res = await fetch(`${API_BASE_URL}?endpoint=/messages&page=${page}`, {
@@ -401,11 +402,11 @@ export async function getMessages(token: string, page = 1, providerId?: string):
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({}))
-      console.log(`❌ [API] getMessages failed - Status: ${res.status}`)
+      logger.warn(`❌ [API] getMessages failed - Status: ${res.status}`)
       throw new Error(getErrorMessage(res.status, error))
     }
 
-    console.log(`✅ [API] getMessages success - Status: ${res.status}`)
+    logger.debug(`✅ [API] getMessages success - Status: ${res.status}`)
     return res
   })
 
@@ -416,7 +417,7 @@ export async function getMessages(token: string, page = 1, providerId?: string):
   // 根据API文档，每页最多30条消息
   const hasMore = messages.length === 30 && (page * 30) < total
 
-  console.log(`📊 [API] getMessages result - Messages: ${messages.length}, Total: ${total}, HasMore: ${hasMore}`)
+  logger.debug(`📊 [API] getMessages result - Messages: ${messages.length}, Total: ${total}, HasMore: ${hasMore}`)
 
   return {
     messages,

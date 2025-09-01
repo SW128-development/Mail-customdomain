@@ -163,8 +163,9 @@
 - UI component fixes for proper interaction
 
 Security note: JWT secrets must be set as Cloudflare Worker Secrets (wrangler secret) and as server-only app env vars.
-They must never live in wrangler.toml, client bundles, or NEXT_PUBLIC_* variables.### 📋 Available Features
-- **Automated Worker Deployment**: Complete setup wizard for new deployments
+They must never live in wrangler.toml, client bundles, or NEXT_PUBLIC_* variables.
+
+### 📋 Available Features- **Automated Worker Deployment**: Complete setup wizard for new deployments
 - **Domain Management**: Add/remove domains from existing workers
 - **Health Monitoring**: Check worker status and email routing configuration
 - **Provider Integration**: Automatically add workers as custom providers

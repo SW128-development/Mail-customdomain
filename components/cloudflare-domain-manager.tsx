@@ -451,7 +451,7 @@ export function CloudflareDomainManager({ isOpen, onClose, currentLocale }: Doma
             <Card>
               <CardHeader className="py-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <h3 className="text-base font-semibold">
+                  <h3 className="text-sm font-medium">
                     {isZh ? '域名管理' : 'Domain Management'}
                   </h3>
                   <div className="flex items-center gap-2 w-full md:w-auto">
