@@ -64,6 +64,7 @@ export function CloudflareSetupWizard({ isOpen, onClose, currentLocale }: SetupW
   const [d1Name, setD1Name] = useState('temp_mail_db')
   const [jwtToken, setJwtToken] = useState('')
   const [setupResult, setSetupResult] = useState<SetupResult | null>(null)
+  const [autoDetectedConfig, setAutoDetectedConfig] = useState<any>(null)
 
   const { toast } = useHeroUIToast()
   const { addCustomProvider } = useApiProvider()
@@ -98,6 +99,24 @@ export function CloudflareSetupWizard({ isOpen, onClose, currentLocale }: SetupW
       runPreflight()
     }
   }, [isOpen, currentStep])
+
+  // Auto-detect configuration when accounts are loaded
+  useEffect(() => {
+    if (!isOpen) return
+    ;(async () => {
+      try {
+        const detectResponse = await fetch('/api/cf/detect-existing')
+        const detectData = await detectResponse.json()
+        if (detectData.success && detectData.workerInfo) {
+          const { workerInfo } = detectData
+          setAutoDetectedConfig(workerInfo)
+          setScriptName(workerInfo.scriptName || 'duckmail-cloudflare-provider')
+          if (workerInfo.domains?.length) setSelectedZones(workerInfo.domains)
+          if (workerInfo.databaseName) setD1Name(workerInfo.databaseName)
+        }
+      } catch {}
+    })()
+  }, [isOpen])
 
   const runPreflight = async () => {
     try {
@@ -415,9 +434,9 @@ export function CloudflareSetupWizard({ isOpen, onClose, currentLocale }: SetupW
                         }`}
                         isPressable
                         onPress={() => {
-                          setSelectedZones(prev => 
+                          setSelectedZones((prev: string[]) => 
                             prev.includes(zone.name)
-                              ? prev.filter(z => z !== zone.name)
+                              ? prev.filter((z: string) => z !== zone.name)
                               : [...prev, zone.name]
                           )
                         }}
@@ -538,7 +557,7 @@ export function CloudflareSetupWizard({ isOpen, onClose, currentLocale }: SetupW
                       : 'Enabling email routing and creating forwarding rules for selected domains...'
                     }
                   </p>
-                  {selectedZones.map((zone) => (
+                  {selectedZones.map((zone: string) => (
                     <div key={zone} className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       <span className="text-sm">{zone}</span>
@@ -625,7 +644,7 @@ export function CloudflareSetupWizard({ isOpen, onClose, currentLocale }: SetupW
                       {isZh ? '配置的域名:' : 'Configured Domains:'}
                     </label>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {setupResult.domains.map((domain) => (
+                      {setupResult.domains.map((domain: string) => (
                         <Badge key={domain} variant="outline">
                           {domain}
                         </Badge>

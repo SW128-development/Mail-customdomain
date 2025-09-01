@@ -7,6 +7,35 @@ const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_DEFAULT_WORKER_NAME || 'du
 const CLOUDFLARE_D1_NAME = process.env.CLOUDFLARE_DEFAULT_D1_NAME || 'temp_mail_db'
 const CLOUDFLARE_D1_ID = process.env.CLOUDFLARE_D1_ID || '70bece35-d5bf-487b-9730-c7546f0266c3'
 const MAIL_DOMAIN = process.env.MAIL_DOMAIN || '10xco.de'
+const CUSTOM_WORKER_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL
+
+async function testWorkerUrl(url: string): Promise<{ success: boolean; domains?: string[] }> {
+  try {
+    console.log('[DetectExisting] Testing worker URL:', url)
+    const testResponse = await fetch(`${url}/domains`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    })
+    
+    if (testResponse.ok) {
+      const data = await testResponse.json()
+      console.log('[DetectExisting] Worker response:', data)
+      // Update domains from actual worker response if available
+      if (Array.isArray(data)) {
+        const domains = data.map((d: any) => d.domain || d).filter(Boolean)
+        return { success: true, domains }
+      }
+      return { success: true }
+    }
+    return { success: false }
+  } catch (error) {
+    console.log('[DetectExisting] Worker test failed for', url, ':', (error as Error)?.message)
+    return { success: false }
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,45 +53,75 @@ export async function GET(request: NextRequest) {
     // Parse domains from MAIL_DOMAIN
     const domains = MAIL_DOMAIN.split(',').filter(d => d.trim()).map(d => d.trim())
     
-    // Construct worker URL based on the worker name
-    // This is a best guess - the actual URL might be different
-    const workerUrl = `https://${CLOUDFLARE_WORKER_NAME}.workers.dev`
+    let workerUrl = ''
+    let workingDomains: string[] = domains
     
-    // If we have the API token, we could potentially query Cloudflare API for more details
-    // But for now, we'll just return what we can determine from env vars
+    // Try custom worker URL first if available
+    if (CUSTOM_WORKER_URL) {
+      const customTest = await testWorkerUrl(CUSTOM_WORKER_URL)
+      if (customTest.success) {
+        workerUrl = CUSTOM_WORKER_URL
+        if (customTest.domains) {
+          workingDomains = customTest.domains
+        }
+        console.log('[DetectExisting] Using custom worker URL:', workerUrl)
+      }
+    }
+    
+    // Resolve account subdomain from Cloudflare API and construct the worker URL deterministically (no guessing)
+    if (!workerUrl && hasApiToken) {
+      try {
+        // Get accounts to find the right one
+        const accountsResponse = await fetch('https://api.cloudflare.com/client/v4/accounts', {
+          headers: {
+            'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        })
+        
+        if (accountsResponse.ok) {
+          const accountsData = await accountsResponse.json()
+          if (accountsData.success && accountsData.result.length > 0) {
+            const accountId = accountsData.result[0].id
+            // Resolve the workers.dev subdomain for this account instead of guessing
+            const subdomainResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/subdomain`, {
+              headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Content-Type': 'application/json',
+              },
+            })
+
+            if (subdomainResponse.ok) {
+              const subdomainData = await subdomainResponse.json()
+              const subdomain = subdomainData?.result?.subdomain
+              if (typeof subdomain === 'string' && subdomain.trim().length > 0) {
+                const resolvedUrl = `https://${CLOUDFLARE_WORKER_NAME}.${subdomain}.workers.dev`
+                const accountTest = await testWorkerUrl(resolvedUrl)
+                if (accountTest.success) {
+                  workerUrl = resolvedUrl
+                  if (accountTest.domains) {
+                    workingDomains = accountTest.domains
+                  }
+                  console.log('[DetectExisting] Using resolved worker URL:', workerUrl)
+                }
+              }
+            }
+          }
+        }
+      } catch (apiError) {
+        console.log('[DetectExisting] API-based detection failed:', apiError)
+      }
+    }
     
     const workerInfo = {
       workerUrl,
       scriptName: CLOUDFLARE_WORKER_NAME,
       databaseId: CLOUDFLARE_D1_ID,
       databaseName: CLOUDFLARE_D1_NAME,
-      domains,
+      domains: workingDomains,
       jwtTokenConfigured: hasJwtToken,
       apiTokenConfigured: hasApiToken,
-      mailDomain: MAIL_DOMAIN
-    }
-
-    // Test if the worker is accessible
-    try {
-      const testResponse = await fetch(`${workerUrl}/domains`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-        signal: AbortSignal.timeout(5000) // 5 second timeout
-      })
-      
-      if (testResponse.ok) {
-        const data = await testResponse.json()
-        // Update domains from actual worker response if available
-        if (Array.isArray(data)) {
-          workerInfo.domains = data.map((d: any) => d.domain || d).filter(Boolean)
-        }
-      }
-    } catch (error) {
-      console.log('Could not reach worker at', workerUrl, '- it might use a different URL')
-      // Try with account-specific subdomain if we can extract account ID
-      // This is just a fallback attempt
+      mailDomain: workingDomains.join(',')
     }
 
     return NextResponse.json({
