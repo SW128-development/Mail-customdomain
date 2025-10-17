@@ -79,10 +79,8 @@ export function useSmartMailChecker({
     }
   }, [mercureResult.isConnected, mercureConnected, mercureAttempted])
 
-  // 备用轮询策略：
-  // 1. 只有在 Mercure 连接失败时才考虑启用
-  // 2. 用户可以通过 enabled 参数控制是否启用轮询
-  const shouldUsePolling = enabled && mercureAttempted && !mercureConnected
+  // 备用轮询策略：当未连接到 Mercure 时启用（无论是否尝试过）
+  const shouldUsePolling = enabled && !mercureConnected
 
   const pollingResult = useMailChecker({
     onNewMessage,

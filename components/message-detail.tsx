@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@heroui/button"
 import { Card, CardBody } from "@heroui/card"
 import { Spinner } from "@heroui/spinner"
@@ -29,6 +29,7 @@ export default function MessageDetail({ message, onBack, onDelete }: MessageDeta
   const { toast } = useHeroUIToast()
   const [currentLocale, setCurrentLocale] = useState("en")
   const isMobile = useIsMobile()
+  const activeAccountIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     // Set locale from DOM after component mounts to avoid hydration mismatch
@@ -39,21 +40,29 @@ export default function MessageDetail({ message, onBack, onDelete }: MessageDeta
 
   useEffect(() => {
     const fetchMessageDetail = async () => {
-      if (!token) {
+      if (!token || !currentAccount) {
         setError(currentLocale === "en" ? "Authentication token not found." : "未找到认证令牌。")
         setLoading(false)
         return
       }
 
+      // Guard against account switching mid-fetch
+      activeAccountIdRef.current = currentAccount.id
+
       try {
         setLoading(true)
         const providerId = currentAccount?.providerId || "duckmail"
         const detail = await getMessage(token, message.id, providerId)
+
+        // Ensure the account hasn't changed while fetching
+        if (activeAccountIdRef.current !== currentAccount.id) {
+          return
+        }
+
         setMessageDetail(detail)
 
         if (!message.seen) {
           await markMessageAsRead(token, message.id, providerId)
-          // Optionally update the message object in parent state to reflect 'seen: true'
         }
         setError(null)
       } catch (err) {
@@ -67,10 +76,10 @@ export default function MessageDetail({ message, onBack, onDelete }: MessageDeta
     }
 
     fetchMessageDetail()
-  }, [token, message.id, message.seen, currentLocale])
+  }, [token, currentAccount?.id, message.id, message.seen, currentLocale])
 
   const handleDelete = async () => {
-    if (!token || !messageDetail) return
+    if (!token || !messageDetail || !currentAccount) return
 
     try {
       const providerId = currentAccount?.providerId || "duckmail"
