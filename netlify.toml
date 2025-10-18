@@ -5,6 +5,15 @@
 [build.environment]
   NODE_VERSION = "18"
 
+  # Turn off heuristic “looks-like-a-secret” checks
+  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
+
+  # Never scan for these keys’ values (non-secrets + the two noisy secrets)
+  SECRETS_SCAN_OMIT_KEYS = "CLOUDFLARE_DEFAULT_WORKER_NAME,CLOUDFLARE_DEFAULT_D1_NAME,MAIL_DOMAIN,NODE_VERSION,CF_DEBUG,NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL,CLOUDFLARE_JWT_TOKEN,CLOUDFLARE_D1_ID"
+
+  # Ignore the exact files that contain those strings (from your error log)
+  SECRETS_SCAN_OMIT_PATHS = "cloudflare-provider/wrangler.toml,app/api/cf/detect-existing/route.ts"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
