@@ -29,7 +29,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 从邮箱地址获取提供商ID
   const getProviderIdFromEmail = (email: string) => {
-        if (typeof window === "undefined") return ((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() ? "cloudflare" : "duckmail")    try {      const domain = email.split("@")[1]      if (!domain) return ((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() ? "cloudflare" : "duckmail")
+    const defaultProviderId = ((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim()) ? "cloudflare" : "duckmail"
+    if (typeof window === "undefined") {
+      return defaultProviderId
+    }
+
+    try {
+      const domain = email.split("@")[1]
+      if (!domain) return defaultProviderId
 
       // 获取缓存的域名信息
       const cachedDomains = localStorage.getItem("cached-domains")
@@ -41,7 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-            return ((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() ? "cloudflare" : "duckmail")    } catch (error) {      console.error("Error getting provider from email:", error)      return ((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() ? "cloudflare" : "duckmail")    }
+      return defaultProviderId
+    } catch (error) {
+      console.error("Error getting provider from email:", error)
+      return defaultProviderId
+    }
   }
 
   useEffect(() => {
