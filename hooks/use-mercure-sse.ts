@@ -49,12 +49,7 @@ export function useMercureSSE({
         baseUrl: "https://api.mail.tm",
         mercureUrl: "https://mercure.mail.tm/.well-known/mercure",
       },
-      {
-        id: "cloudflare",
-        name: "Cloudflare",
-        baseUrl: "https://duckmail-cloudflare-provider.lungw96.workers.dev",
-        mercureUrl: "", // No SSE for Cloudflare provider
-      },
+            ...(((process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim()) ? [{        id: "cloudflare",        name: "Cloudflare",        baseUrl: (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim(),        mercureUrl: "", // No SSE for Cloudflare provider      }] : []),
     ]
 
     const provider = presetProviders.find(p => p.id === providerId)

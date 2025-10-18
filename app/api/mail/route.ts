@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
 
-// 默认API提供商（向后兼容）
-const DEFAULT_API_BASE_URL = "https://api.duckmail.sbs"
+// 默认API提供商（优先 Cloudflare 环境变量，其次 DuckMail 以保持兼容）
+const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() || "https://api.duckmail.sbs"
 
 // 从请求头获取API提供商的基础URL
 function getApiBaseUrl(request: NextRequest): string {

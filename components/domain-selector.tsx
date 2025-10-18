@@ -28,10 +28,11 @@ export function DomainSelector({ value, onSelectionChange, currentLocale, isDisa
 
         // 获取启用的提供商列表
         const disabledProviders = JSON.parse(localStorage.getItem("disabled-api-providers") || "[]")
+        const cfBase = (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim()
         const presetProviders = [
           { id: "duckmail", name: "DuckMail" },
           { id: "mailtm", name: "Mail.tm" },
-          { id: "cloudflare", name: "Cloudflare" },
+          ...(cfBase ? [{ id: "cloudflare", name: "Cloudflare" }] : []),
         ]
         const customProviders = JSON.parse(localStorage.getItem("custom-api-providers") || "[]")
 

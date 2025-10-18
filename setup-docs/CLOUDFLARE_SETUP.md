@@ -32,7 +32,7 @@ CLOUDFLARE_API_TOKEN=your_actual_token_here
 
 # Required for existing workers: JWT Token (must match your wrangler.toml)
 # For new deployments, leave empty to auto-generate
-CLOUDFLARE_JWT_TOKEN=tusiKCfuyXrwDPrsP77GHZtSSdMux6AqDZQKmySpBss=
+CLOUDFLARE_JWT_TOKEN=""
 ```
 
 **Important Notes:**
