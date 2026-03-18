@@ -10,12 +10,17 @@
  一个基于 Next.js 和 Mail.tm API 构建的现代化临时邮件服务，提供安全、快速、匿名的一次性邮箱功能。
 </div>
 
-### 🚀 Cloudflare Provider 快速部署
+### Cloudflare Provider Deployment
 
-- **准备**
-  - 安装并登录 Cloudflare（需要已接入的域名）
-  - 安装 Wrangler CLI
-  - 在项目中进入 `cloudflare-provider`
+Host your own mail backend on Cloudflare Workers with D1 (SQLite) storage and Email Routing.
+
+#### Prerequisites
+
+- A Cloudflare account with a domain already added to Cloudflare DNS
+- Node.js 18+
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)
+
+#### Step 1 — Create the D1 database
 
 ```bash
 cd cloudflare-provider
@@ -23,72 +28,109 @@ npm install
 wrangler d1 create temp_mail_db
 ```
 
-- **配置 `wrangler.toml`**（请替换占位符）
+Copy the `database_id` from the output (e.g. `70bece35-d5bf-487b-9730-c7546f0266c3`).
+
+#### Step 2 — Configure `wrangler.toml`
+
+Edit `cloudflare-provider/wrangler.toml` and replace the placeholder values:
 
 ```toml
 name = "duckmail-cloudflare-provider"
-main = "cloudflare-provider/worker.ts"
+main = "worker.ts"
 compatibility_date = "2024-12-01"
+account_id = "<your-cloudflare-account-id>"   # Find at dash.cloudflare.com → any domain → Overview sidebar
 
 [[d1_databases]]
 binding = "TEMP_MAIL_DB"
 database_name = "temp_mail_db"
-database_id = "<your-d1-id>"
+database_id = "<your-d1-database-id>"         # From Step 1 output
 
 [vars]
-MAIL_DOMAIN = "example.com anotherdomain.com"
-JWT_TOKEN = "your-secure-jwt-secret"
-RESEND_API_KEY = ""
+MAIL_DOMAIN = "yourdomain.com"                # Space-separated if multiple: "a.com b.com"
+JWT_TOKEN = "<random-secret-32-chars-min>"    # Generate with: openssl rand -base64 32
 ```
 
-- **部署到 Cloudflare**
+> `account_id` is optional if you only have one Cloudflare account, but including it avoids permission issues during deploy.
+
+#### Step 3 — Create an API token
+
+Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) and create a token using the **"Edit Cloudflare Workers"** template. This grants the required permissions:
+
+| Permission | Access |
+|---|---|
+| Account / Workers Scripts | Edit |
+| Account / D1 | Edit |
+| Account / Account Settings | Read |
+| Zone / Workers Routes | Edit |
+
+Copy the token — it is shown only once.
+
+#### Step 4 — Deploy
 
 ```bash
-wrangler deploy
+cd cloudflare-provider
+CLOUDFLARE_API_TOKEN=<your-token> npx wrangler deploy
 ```
 
-部署后记录 Worker 地址（例如：`https://duckmail-cloudflare-provider.username.workers.dev`）。
+After deploy, note the Worker URL (e.g. `https://duckmail-cloudflare-provider.yourname.workers.dev`).
 
-- **配置 Email Routing**（Cloudflare 面板 → Email → Email Routing）
-  - 启用 Email Routing
-  - 创建 Catch-all 规则：匹配 `*` → 动作为 Send to Worker → 选择 `duckmail-cloudflare-provider`
+#### Step 5 — Configure Email Routing
 
-- **在 Duckmail 中选择 Cloudflare 提供商**（或在 `lib/api.ts` 里预设）
+In the Cloudflare dashboard for your domain:
 
-```ts
-{
-  id: "cloudflare",
-  name: "Cloudflare",
-  baseUrl: "https://duckmail-cloudflare-provider.username.workers.dev",
-  mercureUrl: "", // 初期无 SSE，使用轮询
-}
-```
+1. Go to **Email** → **Email Routing** → **Routing Rules**
+2. Enable Email Routing if not already enabled
+3. Create a **Catch-all** rule: match `*` → action **Send to Worker** → select `duckmail-cloudflare-provider`
 
-- **本地调试与快速测试**
+This routes all incoming mail for your domain to the Worker for processing.
+
+#### Step 6 — Connect to DuckMail frontend
+
+In the DuckMail app, go to **Settings** (gear icon) and add a **Custom Provider**:
+
+| Field | Value |
+|---|---|
+| ID | `cloudflare` (or any unique string) |
+| Name | Your provider name |
+| API Base URL | `https://duckmail-cloudflare-provider.yourname.workers.dev` |
+| Mercure URL | *(leave empty — uses polling)* |
+
+Or set it as a preset provider in `contexts/api-provider-context.tsx`.
+
+#### Local development and testing
 
 ```bash
-# 运行本地开发
 cd cloudflare-provider
 wrangler dev
 
-# 获取域名
+# Test endpoints (uses MAIL_DOMAIN = "test.local" from [env.development.vars])
 curl http://localhost:8787/domains
 
-# 创建账号
 curl -X POST http://localhost:8787/accounts \
   -H "Content-Type: application/json" \
   -d '{"address": "test@test.local", "password": "password123"}'
 
-# 获取 token
 curl -X POST http://localhost:8787/token \
   -H "Content-Type: application/json" \
   -d '{"address": "test@test.local", "password": "password123"}'
 ```
 
-- **常见问题与安全建议**
-  - 仅允许 `MAIL_DOMAIN` 中的域名创建账号
-  - 确保 `JWT_TOKEN` 为强随机密钥，且与生产环境一致
-  - 若未收到邮件：检查 Email Routing 规则是否指向该 Worker；使用 `wrangler tail` 查看日志
+#### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Invalid domain` on account creation | The email domain must match one of the domains in `MAIL_DOMAIN` in `wrangler.toml` |
+| `Authentication error [code: 10000]` on deploy | Add `account_id` to `wrangler.toml`, or pass `CLOUDFLARE_ACCOUNT_ID` env var |
+| `Invalid API Token` on deploy | Regenerate the token at dash.cloudflare.com/profile/api-tokens — use the "Edit Cloudflare Workers" template |
+| Not receiving emails | Check Email Routing catch-all rule points to the Worker; run `wrangler tail` to see live logs |
+| Database errors on fresh deploy | The Worker auto-creates tables on first request — send a test request to `/domains` to trigger initialization |
+
+#### Security notes
+
+- Only domains listed in `MAIL_DOMAIN` can create accounts — all others are rejected
+- Use a strong random string for `JWT_TOKEN` (`openssl rand -base64 32`)
+- Tokens expire after 24 hours; the frontend handles re-authentication automatically
+- The `.env` file is gitignored — never commit API tokens to the repository
 
 ### UI 自动化配置快速测试（Cloudflare）
 

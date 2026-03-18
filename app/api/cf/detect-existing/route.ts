@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
 
-// Check environment variables for existing configuration
+// Check environment variables for existing configuration — no hardcoded fallbacks
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN
 const CLOUDFLARE_JWT_TOKEN = process.env.CLOUDFLARE_JWT_TOKEN || process.env.JWT_TOKEN
-const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_DEFAULT_WORKER_NAME || 'duckmail-cloudflare-provider'
-const CLOUDFLARE_D1_NAME = process.env.CLOUDFLARE_DEFAULT_D1_NAME || 'temp_mail_db'
-const CLOUDFLARE_D1_ID = process.env.CLOUDFLARE_D1_ID || '70bece35-d5bf-487b-9730-c7546f0266c3'
-const MAIL_DOMAIN = process.env.MAIL_DOMAIN || '10xco.de'
+const CLOUDFLARE_WORKER_NAME = process.env.CLOUDFLARE_DEFAULT_WORKER_NAME
+const CLOUDFLARE_D1_NAME = process.env.CLOUDFLARE_DEFAULT_D1_NAME
+const CLOUDFLARE_D1_ID = process.env.CLOUDFLARE_D1_ID
+const MAIL_DOMAIN = process.env.MAIL_DOMAIN
 const CUSTOM_WORKER_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL
 
 const CF_DEBUG = (() => {
@@ -45,19 +45,21 @@ async function testWorkerUrl(url: string): Promise<{ success: boolean; domains?:
 
 export async function GET(request: NextRequest) {
   try {
-    // Check if we have the minimum required configuration
-    const hasJwtToken = CLOUDFLARE_JWT_TOKEN && CLOUDFLARE_JWT_TOKEN !== 'your_jwt_token_here'
-    const hasApiToken = CLOUDFLARE_API_TOKEN && CLOUDFLARE_API_TOKEN !== 'your_cloudflare_api_token_here'
-    
-    if (!hasJwtToken) {
+    const hasJwtToken = !!(CLOUDFLARE_JWT_TOKEN && CLOUDFLARE_JWT_TOKEN !== 'your_jwt_token_here')
+    const hasApiToken = !!(CLOUDFLARE_API_TOKEN && CLOUDFLARE_API_TOKEN !== 'your_cloudflare_api_token_here')
+    const hasWorkerUrl = !!CUSTOM_WORKER_URL
+    const hasWorkerName = !!CLOUDFLARE_WORKER_NAME
+
+    if (!hasJwtToken && !hasWorkerUrl && !hasApiToken) {
       return NextResponse.json({
         success: false,
-        error: 'No existing Cloudflare Worker configuration found in environment variables'
+        error: 'No Cloudflare configuration found. Set CLOUDFLARE_API_TOKEN, NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL, or CLOUDFLARE_JWT_TOKEN in environment variables.'
       })
     }
 
-    // Parse domains from MAIL_DOMAIN
-    const domains = MAIL_DOMAIN.split(',').filter(d => d.trim()).map(d => d.trim())
+    const domains = MAIL_DOMAIN
+      ? MAIL_DOMAIN.split(/[\s,]+/).filter(d => d.trim()).map(d => d.trim())
+      : []
     
     let workerUrl = ''
     let workingDomains: string[] = domains
@@ -74,8 +76,8 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Resolve account subdomain from Cloudflare API and construct the worker URL deterministically (no guessing)
-    if (!workerUrl && hasApiToken) {
+    // Resolve account subdomain from Cloudflare API (only if we have a worker name to look up)
+    if (!workerUrl && hasApiToken && hasWorkerName) {
       try {
         // Get accounts to find the right one
         const accountsResponse = await fetch('https://api.cloudflare.com/client/v4/accounts', {
@@ -121,9 +123,9 @@ export async function GET(request: NextRequest) {
     
     const workerInfo = {
       workerUrl,
-      scriptName: CLOUDFLARE_WORKER_NAME,
-      databaseId: CLOUDFLARE_D1_ID,
-      databaseName: CLOUDFLARE_D1_NAME,
+      scriptName: CLOUDFLARE_WORKER_NAME || '',
+      databaseId: CLOUDFLARE_D1_ID || '',
+      databaseName: CLOUDFLARE_D1_NAME || '',
       domains: workingDomains,
       jwtTokenConfigured: hasJwtToken,
       apiTokenConfigured: hasApiToken,

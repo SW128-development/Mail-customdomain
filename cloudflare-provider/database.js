@@ -152,7 +152,8 @@ export async function updateSentEmail(db, resendId, fields){
 }
 
 export async function ensureSentEmailsTable(db){
-  const createSql = 'CREATE TABLE IF NOT EXISTS sent_emails (' +
+  await db.exec(
+    'CREATE TABLE IF NOT EXISTS sent_emails (' +
     'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
     'resend_id TEXT,' +
     'from_name TEXT,' +
@@ -165,26 +166,19 @@ export async function ensureSentEmailsTable(db){
     'scheduled_at TEXT,' +
     'created_at TEXT DEFAULT CURRENT_TIMESTAMP,' +
     'updated_at TEXT DEFAULT CURRENT_TIMESTAMP' +
-  ')';
-  // Migration: Add from_name column if missing
+    ')'
+  );
   try {
     const res = await db.prepare("PRAGMA table_info(sent_emails)").all();
     const cols = (res?.results || []).map(r => (r.name || r?.['name']));
     if (!cols.includes('from_name')) {
       await db.exec('ALTER TABLE sent_emails ADD COLUMN from_name TEXT');
     }
-  } catch (error) {
-    console.warn('Migration warning (from_name column may already exist):', error.message);
-  }
-    console.warn('Migration warning (from_name column may already exist):', error.message);
-  }
-    }
   } catch (_) {}
 }
 
 // ============== 用户与授权相关 ==============
 export async function ensureUsersTables(db){
-  // 用户表：默认邮箱上限 10
   await db.exec(
     "CREATE TABLE IF NOT EXISTS users (" +
     "id INTEGER PRIMARY KEY AUTOINCREMENT," +
@@ -192,49 +186,36 @@ export async function ensureUsersTables(db){
     "password_hash TEXT," +
     "role TEXT NOT NULL DEFAULT 'user'," +
     "can_send INTEGER NOT NULL DEFAULT 0," +
-  // Migration: Add can_send column if missing
+    "mailbox_limit INTEGER NOT NULL DEFAULT 10" +
+    ")"
+  );
   try {
     const res = await db.prepare("PRAGMA table_info(users)").all();
     const cols = (res?.results || []).map(r => (r.name || r?.['name']));
     if (!cols.includes('can_send')) {
       await db.exec('ALTER TABLE users ADD COLUMN can_send INTEGER NOT NULL DEFAULT 0');
     }
-  } catch (error) {
-    console.warn('Migration warning (can_send column may already exist):', error.message);
-  }
-    const res = await db.prepare("PRAGMA table_info(users)").all();
-    const cols = (res?.results || []).map(r => (r.name || r?.['name']));
-    if (!cols.includes('can_send')){
-      await db.exec('ALTER TABLE users ADD COLUMN can_send INTEGER NOT NULL DEFAULT 0');
+    if (!cols.includes('mailbox_limit')) {
+      await db.exec('ALTER TABLE users ADD COLUMN mailbox_limit INTEGER NOT NULL DEFAULT 10');
     }
-  }catch(_){ }
+  } catch (_) {}
 
-  // 用户-邮箱 关联表
   await db.exec(
     "CREATE TABLE IF NOT EXISTS user_mailboxes (" +
     "id INTEGER PRIMARY KEY AUTOINCREMENT," +
     "user_id INTEGER NOT NULL," +
     "mailbox_id INTEGER NOT NULL," +
     "created_at TEXT DEFAULT CURRENT_TIMESTAMP," +
-    "is_pinned INTEGER NOT NULL DEFAULT 0," +
-  // Migration: Add is_pinned column if missing
+    "is_pinned INTEGER NOT NULL DEFAULT 0" +
+    ")"
+  );
   try {
     const um = await db.prepare("PRAGMA table_info(user_mailboxes)").all();
     const cols = (um?.results || []).map(r => (r.name || r?.['name']));
-    if (!cols.includes('is_pinned')){
+    if (!cols.includes('is_pinned')) {
       await db.exec('ALTER TABLE user_mailboxes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0');
     }
-  } catch (error) {
-    console.warn('Migration warning (is_pinned column may already exist):', error.message);
-  }
-  // 迁移：若缺少 is_pinned 列，则添加
-  try {
-    const um = await db.prepare("PRAGMA table_info(user_mailboxes)").all();
-    const cols = (um?.results || []).map(r => (r.name || r?.['name']));
-    if (!cols.includes('is_pinned')){
-      await db.exec('ALTER TABLE user_mailboxes ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0');
-    }
-  } catch (_){ }
+  } catch (_) {}
 }
 
 export async function createUser(db, { username, passwordHash = null, role = 'user', mailboxLimit = 10 }){

@@ -140,7 +140,7 @@ function getProviderConfig(providerId: string) {
 function getErrorMessage(status: number, errorData: any): string {
 	switch (status) {
 		case 400:
-			return "请求参数错误或缺失必要信息"
+			return errorData?.error || errorData?.detail || errorData?.message || "请求参数错误或缺失必要信息"
 		case 401:
 			return "认证失败，请检查登录状态"
 		case 404:
@@ -288,11 +288,6 @@ export async function fetchAllDomains(): Promise<Domain[]> {
 		console.error("Error fetching domains from all providers:", error)
 		throw error
 	}
-}
-
-// 保持向后兼容的函数
-export async function fetchDomains(): Promise<Domain[]> {
-	return fetchAllDomains()
 }
 
 export async function createAccount(address: string, password: string, providerId?: string): Promise<Account> {

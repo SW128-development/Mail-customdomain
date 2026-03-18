@@ -40,8 +40,18 @@ export default function AccountModal({ isOpen, onClose, currentLocale }: Account
 
     const email = `${username}@${selectedDomain}`
 
+    let providerId: string | undefined
     try {
-      await register(email, password)
+      const cachedDomains = localStorage.getItem("cached-domains")
+      if (cachedDomains) {
+        const domains = JSON.parse(cachedDomains)
+        const matched = domains.find((d: any) => d.domain === selectedDomain)
+        if (matched?.providerId) providerId = matched.providerId
+      }
+    } catch (_) {}
+
+    try {
+      await register(email, password, providerId)
       onClose()
       // 重置表单
       setUsername("")

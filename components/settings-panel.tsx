@@ -388,6 +388,7 @@ export function SettingsPanel({ isOpen, onClose, currentLocale }: SettingsPanelP
       isOpen={showCloudflareAutoDetect}
       onClose={() => setShowCloudflareAutoDetect(false)}
       currentLocale={currentLocale}
+      onOpenDomainManager={() => setShowCloudflareManager(true)}
     />
   </>
   )
