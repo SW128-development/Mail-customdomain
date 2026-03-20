@@ -1,5 +1,4 @@
 [build]
-  publish = ".next"
   command = "pnpm run build"
 
 [build.environment]
@@ -13,8 +12,3 @@
 
   # Ignore the exact files that contain those strings (from your error log)
   SECRETS_SCAN_OMIT_PATHS = "cloudflare-provider/wrangler.toml,app/api/cf/detect-existing/route.ts"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
