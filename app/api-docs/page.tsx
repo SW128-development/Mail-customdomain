@@ -284,7 +284,7 @@ export default function ApiDocsPage() {
             </p>
             <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg">
               <p className="text-gray-700 dark:text-gray-300">
-                <strong>{currentContent.baseUrl}</strong> <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">https://api.duckmail.sbs</code>
+                <strong>{currentContent.baseUrl}</strong> <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">https://your-worker.workers.dev</code>
               </p>
             </div>
           </CardBody>
@@ -358,7 +358,7 @@ export default function ApiDocsPage() {
           <CardBody>
             <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
               <p className="text-gray-700 dark:text-gray-300">
-                <strong>{currentContent.baseUrl}</strong> <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">https://api.duckmail.sbs</code>
+                <strong>{currentContent.baseUrl}</strong> <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">https://your-worker.workers.dev</code>
               </p>
             </div>
           </CardBody>
@@ -830,7 +830,7 @@ export default function ApiDocsPage() {
                   </strong>
                   <div className="bg-blue-100 dark:bg-blue-800 p-2 rounded mt-1">
                     <code className="text-sm text-blue-900 dark:text-blue-100">
-                      https://mercure.duckmail.sbs/.well-known/mercure
+                      https://mercure.your-domain/.well-known/mercure
                     </code>
                   </div>
                 </div>

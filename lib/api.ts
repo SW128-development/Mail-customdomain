@@ -3,6 +3,8 @@ import { logger } from "@/lib/logger"
 
 const API_BASE_URL = "/api/mail"
 const CF_BASE_URL = (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim()
+const DUCKMAIL_API_URL = (process.env.NEXT_PUBLIC_DUCKMAIL_API_URL || "").trim()
+const DUCKMAIL_MERCURE_URL = (process.env.NEXT_PUBLIC_DUCKMAIL_MERCURE_URL || "").trim()
 
 // 获取默认API提供商配置（用于向后兼容）
 function getDefaultProviderConfig() {
@@ -14,11 +16,19 @@ function getDefaultProviderConfig() {
 			mercureUrl: "",
 		}
 	}
+	if (DUCKMAIL_API_URL) {
+		return {
+			id: "duckmail",
+			name: "DuckMail",
+			baseUrl: DUCKMAIL_API_URL,
+			mercureUrl: DUCKMAIL_MERCURE_URL,
+		}
+	}
 	return {
 		id: "duckmail",
 		name: "DuckMail",
-		baseUrl: "https://api.duckmail.sbs",
-		mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
+		baseUrl: "",
+		mercureUrl: "",
 	}
 }
 
@@ -88,12 +98,16 @@ function getProviderConfig(providerId: string) {
 	try {
 		// 预设提供商
 		const presetProviders = [
-			{
-				id: "duckmail",
-				name: "DuckMail",
-				baseUrl: "https://api.duckmail.sbs",
-				mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
-			},
+			...(DUCKMAIL_API_URL
+				? [
+					{
+						id: "duckmail",
+						name: "DuckMail",
+						baseUrl: DUCKMAIL_API_URL,
+						mercureUrl: DUCKMAIL_MERCURE_URL,
+					},
+				]
+				: []),
 			{
 				id: "mailtm",
 				name: "Mail.tm",
@@ -130,8 +144,8 @@ function getProviderConfig(providerId: string) {
 		return {
 			id: "duckmail",
 			name: "DuckMail",
-			baseUrl: "https://api.duckmail.sbs",
-			mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
+			baseUrl: DUCKMAIL_API_URL || "",
+			mercureUrl: DUCKMAIL_MERCURE_URL || "",
 		}
 	}
 }

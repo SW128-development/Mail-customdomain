@@ -36,13 +36,19 @@ export function useMercureSSE({
     const providerId = currentAccount.providerId || "duckmail"
 
     // 直接获取提供商配置，避免依赖外部函数
+    const duckMailApiUrl = (process.env.NEXT_PUBLIC_DUCKMAIL_API_URL || "").trim()
+    const duckMailMercureUrl = (process.env.NEXT_PUBLIC_DUCKMAIL_MERCURE_URL || "").trim()
     const presetProviders = [
-      {
-        id: "duckmail",
-        name: "DuckMail",
-        baseUrl: "https://api.duckmail.sbs",
-        mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
-      },
+      ...(duckMailApiUrl
+        ? [
+            {
+              id: "duckmail",
+              name: "DuckMail",
+              baseUrl: duckMailApiUrl,
+              mercureUrl: duckMailMercureUrl,
+            },
+          ]
+        : []),
       {
         id: "mailtm",
         name: "Mail.tm",

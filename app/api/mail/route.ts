@@ -1,13 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { logger } from "@/lib/logger"
 
-// 默认API提供商（优先 Cloudflare 环境变量，其次 DuckMail 以保持兼容）
-const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() || "https://api.duckmail.sbs"
+const DEFAULT_API_BASE_URL = (
+  (process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL || "").trim() ||
+  (process.env.NEXT_PUBLIC_DUCKMAIL_API_URL || "").trim()
+)
 
-// 从请求头获取API提供商的基础URL
 function getApiBaseUrl(request: NextRequest): string {
   const providerBaseUrl = request.headers.get("X-API-Provider-Base-URL")
-  return providerBaseUrl || DEFAULT_API_BASE_URL
+  if (providerBaseUrl) return providerBaseUrl
+  if (DEFAULT_API_BASE_URL) return DEFAULT_API_BASE_URL
+  throw new Error("No API provider URL configured. Set NEXT_PUBLIC_CLOUDFLARE_WORKER_BASE_URL or NEXT_PUBLIC_DUCKMAIL_API_URL, or pass X-API-Provider-Base-URL header.")
 }
 
 async function handleRequest(
@@ -15,7 +18,12 @@ async function handleRequest(
   endpoint: string,
   options: RequestInit,
 ) {
-  const apiBaseUrl = getApiBaseUrl(originalRequest)
+  let apiBaseUrl: string
+  try {
+    apiBaseUrl = getApiBaseUrl(originalRequest)
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 15000) // 15秒超时
 

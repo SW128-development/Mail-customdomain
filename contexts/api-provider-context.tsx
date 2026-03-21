@@ -3,15 +3,22 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import type { ApiProvider, CustomApiProvider } from "@/types"
 
+const DUCKMAIL_API_URL = (process.env.NEXT_PUBLIC_DUCKMAIL_API_URL || "").trim()
+const DUCKMAIL_MERCURE_URL = (process.env.NEXT_PUBLIC_DUCKMAIL_MERCURE_URL || "").trim()
+
 // 预设的API提供商
 export const PRESET_PROVIDERS: ApiProvider[] = [
-	{
-		id: "duckmail",
-		name: "DuckMail",
-		baseUrl: "https://api.duckmail.sbs",
-		mercureUrl: "https://mercure.duckmail.sbs/.well-known/mercure",
-		isCustom: false,
-	},
+	...(DUCKMAIL_API_URL
+		? ([
+			{
+				id: "duckmail",
+				name: "DuckMail",
+				baseUrl: DUCKMAIL_API_URL,
+				mercureUrl: DUCKMAIL_MERCURE_URL,
+				isCustom: false,
+			},
+		] as ApiProvider[])
+		: []),
 	{
 		id: "mailtm",
 		name: "Mail.tm",
